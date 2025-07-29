@@ -1,1 +1,4 @@
 # My configs
+```
+install ripgrep
+```
