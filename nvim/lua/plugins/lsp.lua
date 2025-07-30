@@ -8,7 +8,7 @@ local root_files = {
   'selene.yml',
   '.git',
 }
- 
+
 return {
     "neovim/nvim-lspconfig",
     dependencies = {
@@ -45,8 +45,13 @@ return {
                 "lua_ls",
                 "rust_analyzer",
                 "quick_lint_js",
-		"pyright",
-		"pylsp",
+                "pyright",
+                "pylsp",
+                "shfmt",
+                "shellcheck",
+                "css-lsp",
+                "tailwindcss",
+                "tsserver",
             },
             handlers = {
                 function(server_name) -- default handler (optional)
@@ -63,7 +68,7 @@ return {
                             zls = {
                                 enable_inlay_hints = true,
                                 enable_snippets = true,
-                                -- warn_style = true,
+                                warn_style = true,
                             },
                         },
                     })
@@ -90,6 +95,27 @@ return {
                         }
                     }
                 end,
+
+                ["tsserver"] = function()
+                    local lspconfig = require("lspconfig")
+                    lspconfig.tsserver.setup {
+                        capabilities = capabilities,
+                        filetypes = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
+                        settings = {
+                            completions = {
+                                completeFunctionCalls = true,
+                            },
+                            -- You can add additional tsserver settings here.
+                            -- For React projects, tsserver automatically picks up JSX/TSX files.
+                        },
+                        on_attach = function(client, bufnr)
+                            -- Optionally disable tsserver's formatting in favor of a dedicated plugin like null-ls with Prettier.
+                            client.server_capabilities.documentFormattingProvider = false
+                            -- Keymapping or other on_attach functions can go here as well.
+                        end,
+                    }
+                end,
+
             }
         })
 
