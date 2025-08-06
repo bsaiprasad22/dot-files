@@ -4,7 +4,7 @@ return {
 	lazy = false, 
 	build = ":TSUpdate",
 	configs = {
-		ensure_installed = {"help", "javascript", "python", "lua"},
+		ensure_installed = {"help", "javascript", "python", "lua", "typescript", "jsx", "tsx", "html", "css", "json"},
 		sync_install = false,
 		auto_install = true,
 		highlight = {

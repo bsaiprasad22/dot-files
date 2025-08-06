@@ -48,10 +48,10 @@ return {
                 "pyright",
                 "pylsp",
                 "shfmt",
-                "shellcheck",
-                "css-lsp",
+                "bashls",
+                "cssls",
                 "tailwindcss",
-                "tsserver",
+                "ts_ls",
             },
             handlers = {
                 function(server_name) -- default handler (optional)
