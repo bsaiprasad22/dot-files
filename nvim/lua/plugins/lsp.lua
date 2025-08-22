@@ -47,7 +47,6 @@ return {
                 "quick_lint_js",
                 "pyright",
                 "pylsp",
-                "shfmt",
                 "bashls",
                 "cssls",
                 "tailwindcss",

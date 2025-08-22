@@ -1,3 +1,5 @@
+vim.opt.clipboard = "unnamedplus"
+
 vim.opt.nu = true
 vim.opt.relativenumber = true
 
@@ -36,3 +38,11 @@ vim.keymap.set("x", "<leader>p", "\"_dP")
 
 vim.keymap.set("n", "<leader>y", "\"+y")
 vim.keymap.set("v", "<leader>y", "\"+y")
+
+vim.api.nvim_create_user_command('AlphaTab', function()
+    vim.cmd('tabnew')
+    vim.cmd('Alpha')
+end, {})
+
+vim.keymap.set("n", "<leader>t", ":AlphaTab<CR>")
+
