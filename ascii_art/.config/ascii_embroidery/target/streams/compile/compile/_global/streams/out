@@ -1,0 +1,4 @@
+[0m[[0m[31merror[0m] [0m[0m/home/vm/tmp_scala_project/src/main/scala/Main.scala:10:59: value toAsciiArtColored is not a member of embroidery.logo.LogoPath[0m
+[0m[[0m[31merror[0m] [0m[0m    val art = ImagePath("src/main/resources/snorlax.png").toAsciiArtColored.linesIterator.toList[0m
+[0m[[0m[31merror[0m] [0m[0m                                                          ^[0m
+[0m[[0m[31merror[0m] [0m[0mone error found[0m
