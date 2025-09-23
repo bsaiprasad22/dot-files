@@ -1,9 +1,6 @@
 # My configs
 ```
 sudo apt install ripgrep
-sudo apt install fzf
-sudo apt install zoxide
-sudo apt install stow
 ```
 
 For copilot chat
