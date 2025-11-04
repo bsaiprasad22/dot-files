@@ -20,6 +20,9 @@ vim.opt.hlsearch = false
 vim.opt.incsearch = true
 
 vim.opt.termguicolors = true
+if vim.env.TERM == "xterm-256color" then
+    vim.env.TERM = "xterm-256color"
+end
 
 vim.opt.scrolloff = 8
 vim.opt.signcolumn = "yes"
@@ -46,3 +49,8 @@ end, {})
 
 vim.keymap.set("n", "<leader>t", ":AlphaTab<CR>")
 
+-- Optimisations
+vim.opt.mouse = ""
+vim.opt.cursorline = false
+vim.opt.updatetime = 300
+vim.opt.ttyfast = true

@@ -94,6 +94,10 @@ source $ZSH/oh-my-zsh.sh
 #   export EDITOR='nvim'
 # fi
 
+if [ -n "$MOSH_CONNECTION" ]; then
+    export TERM=xterm-256color
+fi
+
 # Compilation flags
 # export ARCHFLAGS="-arch $(uname -m)"
 

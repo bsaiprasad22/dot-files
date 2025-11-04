@@ -86,7 +86,7 @@ Format code blocks with proper language tags for syntax highlighting.]],
 
                 -- model = 'gpt-4', -- GPT model to use
                 temperature = 0.1,
-                question_header = '## User ', -- Header to use for user questions
+                question_header = '## Sai ', -- Header to use for user questions
                 answer_header = '## Copilot ', -- Header to use for AI answers
                 error_header = '## Error ', -- Header to use for errors
                 separator = '───', -- Separator to use in chat
@@ -247,6 +247,8 @@ Format code blocks with proper language tags for syntax highlighting.]],
                 vim.tbl_extend("force", opts, { desc = "CopilotChat - Add documentation" }))
             keymap("n", "<leader>ct", "<cmd>CopilotChatTests<CR>",
                 vim.tbl_extend("force", opts, { desc = "CopilotChat - Generate tests" }))
+            keymap("n", "<leader>cm", "<cmd>CopilotChatModels<CR>",
+                vim.tbl_extend("force", opts, { desc = "CopilotChat - List available models" }))
 
             -- Visual mode quick actions
             keymap("v", "<leader>ce", "<cmd>CopilotChatExplain<CR>",
