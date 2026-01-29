@@ -122,3 +122,13 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
 eval "$(zoxide init zsh)"
+export PATH="$HOME/.local/bin:$PATH"
+# [ -f "$HOME/.config/claude-code/env.sh" ] && source "$HOME/.config/claude-code/env.sh"
+
+# Jira MCP Server Configuration (Pensando Atlassian)
+export JIRA_URL="https://pensando.atlassian.net"
+export JIRA_USERNAME="sai.bapa@amd.com"
+
+alias ta="tmux attach -t"
+alias tk="tmux kill-session -t"
+alias tn="tmux new-session -s"
