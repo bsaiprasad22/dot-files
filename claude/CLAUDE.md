@@ -6,6 +6,7 @@
 - Always ask clarifying questions before proceeding with a task
 - Only skip clarification if the user explicitly says not to ask questions
 - When autocompacting, preserve all relevant context - if unsure what to retain, ask the user and present summaries of the context being considered for retention
+- **Concision over grammar** - sacrifice proper grammar for brevity in all output: commits, plans, comments, documentation. Short and clear beats grammatically correct
 
 ## Testing
 
