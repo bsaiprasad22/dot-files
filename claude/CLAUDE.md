@@ -22,6 +22,22 @@ When starting any new project, task, or bug fix:
 2. **Require a Jira ID** - Ask the user for the Jira ticket ID before proceeding
 3. Name the worktree directory using the Jira ID (e.g., `/home/vm/worktrees/PROJ-1234`)
 
+### penops-ui Workspace Setup
+
+When working on penops-ui projects, use these commands to set up the worktree:
+
+```bash
+# Create worktree from main branch
+cd /home/vm/penops-ui
+git worktree add /home/vm/worktrees/<JIRA-ID> -b <JIRA-ID> main
+
+# Install dependencies (legacy-peer-deps required due to dependency conflicts)
+cd /home/vm/worktrees/<JIRA-ID>
+npm install --legacy-peer-deps
+```
+
+**Important:** Always use `--legacy-peer-deps` flag when running npm install for penops-ui projects.
+
 ## Jira Integration
 
 - **Commit messages**: Always include the Jira ID at the start of commit messages (e.g., `PROJ-1234: Fix login validation bug`)
