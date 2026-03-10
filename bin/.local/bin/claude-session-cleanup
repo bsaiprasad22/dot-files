@@ -1,0 +1,656 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# claude-session-cleanup — inventory and clean stale Claude Code session data
+# Scans 8 locations for session artifacts, classifies active/recent/stale,
+# and interactively (or automatically) removes stale ones.
+
+VERSION="1.0.0"
+CLAUDE_DIR="$HOME/.claude"
+STALE_DAYS=7
+FORCE=false
+DRY_RUN=false
+ACTIVE_HOURS=12
+
+# Colors (disabled if not a terminal)
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'
+    DIM='\033[2m'; RESET='\033[0m'
+else
+    RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; BOLD=''; DIM=''; RESET=''
+fi
+
+usage() {
+    cat <<EOF
+Usage: claude-session-cleanup [OPTIONS]
+
+Inventory and clean stale Claude Code session data.
+
+Options:
+  -d, --days N     Stale threshold in days (default: $STALE_DAYS)
+  -f, --force      Non-interactive, delete all stale
+      --dry-run    Show what would be deleted, don't act
+  -h, --help       Show this help
+  -v, --version    Show version
+
+Scanned locations:
+  ~/.claude/projects/*/UUID.jsonl      Conversation logs
+  ~/.claude/projects/*/UUID/           Subagent/tool-result dirs
+  ~/.claude/session-env/UUID/          Session environment
+  ~/.claude/todos/UUID-agent-*.json    Todo files
+  ~/.claude/tasks/UUID/                Task dirs
+  ~/.claude/debug/UUID.txt             Debug logs
+  ~/.claude/file-history/UUID/         File history
+  ~/.claude/history.jsonl              Session history entries
+  /tmp/claude-*-cwd                    Orphaned tmp files
+  ~/.claude/projects/*/agent-*.jsonl   Old-format agent logs
+EOF
+}
+
+# --- Argument parsing ---
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -d|--days) STALE_DAYS="$2"; shift 2 ;;
+        -f|--force) FORCE=true; shift ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -v|--version) echo "claude-session-cleanup $VERSION"; exit 0 ;;
+        *) echo "Unknown option: $1"; usage; exit 1 ;;
+    esac
+done
+
+# --- Utility functions ---
+
+now_epoch() { date +%s; }
+
+file_mtime_epoch() {
+    stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+human_size() {
+    local bytes=$1
+    if (( bytes >= 1073741824 )); then
+        printf "%.1f GB" "$(echo "scale=1; $bytes / 1073741824" | bc)"
+    elif (( bytes >= 1048576 )); then
+        printf "%.1f MB" "$(echo "scale=1; $bytes / 1048576" | bc)"
+    elif (( bytes >= 1024 )); then
+        printf "%.1f KB" "$(echo "scale=1; $bytes / 1024" | bc)"
+    else
+        printf "%d B" "$bytes"
+    fi
+}
+
+human_date() {
+    date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "unknown"
+}
+
+safe_rm() {
+    if $DRY_RUN; then
+        echo "  [dry-run] Would remove: $1"
+    else
+        rm -rf "$1"
+    fi
+}
+
+is_uuid() {
+    [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+# --- Gather running claude PIDs ---
+declare -A CLAUDE_PIDS
+gather_claude_pids() {
+    while IFS= read -r pid; do
+        CLAUDE_PIDS["$pid"]=1
+    done < <(pgrep -x claude 2>/dev/null || true)
+}
+
+# Check if any claude process is running
+any_claude_running() {
+    [[ ${#CLAUDE_PIDS[@]} -gt 0 ]]
+}
+
+# --- Session discovery ---
+# Associative arrays: UUID -> latest mtime, UUID -> total size
+declare -A SESSION_MTIME
+declare -A SESSION_SIZE
+declare -A SESSION_STATUS
+declare -A SESSION_LOCATIONS  # UUID -> count of locations found in
+
+gather_sessions() {
+    local uuid mtime size
+
+    # 1. projects/*/UUID.jsonl — conversation logs
+    while IFS= read -r f; do
+        uuid="$(basename "$f" .jsonl)"
+        is_uuid "$uuid" || continue
+        mtime=$(file_mtime_epoch "$f")
+        size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        update_session "$uuid" "$mtime" "$size"
+    done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -name '*.jsonl' -type f 2>/dev/null | grep -E '/[0-9a-f]{8}-')
+
+    # 2. projects/*/UUID/ — subagent dirs
+    while IFS= read -r d; do
+        uuid="$(basename "$d")"
+        is_uuid "$uuid" || continue
+        mtime=$(file_mtime_epoch "$d")
+        size=$(du -sb "$d" 2>/dev/null | cut -f1 || echo 0)
+        update_session "$uuid" "$mtime" "$size"
+    done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -mindepth 2 -type d 2>/dev/null | grep -E '/[0-9a-f]{8}-[0-9a-f]{4}-')
+
+    # 3. session-env/UUID/
+    if [[ -d "$CLAUDE_DIR/session-env" ]]; then
+        for d in "$CLAUDE_DIR/session-env"/*/; do
+            [[ -d "$d" ]] || continue
+            uuid="$(basename "$d")"
+            is_uuid "$uuid" || continue
+            mtime=$(file_mtime_epoch "$d")
+            size=$(du -sb "$d" 2>/dev/null | cut -f1 || echo 0)
+            update_session "$uuid" "$mtime" "$size"
+        done
+    fi
+
+    # 4. todos/UUID-agent-*.json
+    if [[ -d "$CLAUDE_DIR/todos" ]]; then
+        for f in "$CLAUDE_DIR/todos"/*-agent-*.json; do
+            [[ -f "$f" ]] || continue
+            # Extract UUID: first 36 chars of filename
+            local base
+            base="$(basename "$f")"
+            uuid="${base:0:36}"
+            is_uuid "$uuid" || continue
+            mtime=$(file_mtime_epoch "$f")
+            size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+            update_session "$uuid" "$mtime" "$size"
+        done
+    fi
+
+    # 5. tasks/UUID/
+    if [[ -d "$CLAUDE_DIR/tasks" ]]; then
+        for d in "$CLAUDE_DIR/tasks"/*/; do
+            [[ -d "$d" ]] || continue
+            uuid="$(basename "$d")"
+            is_uuid "$uuid" || continue
+            mtime=$(file_mtime_epoch "$d")
+            size=$(du -sb "$d" 2>/dev/null | cut -f1 || echo 0)
+            update_session "$uuid" "$mtime" "$size"
+        done
+    fi
+
+    # 6. debug/UUID.txt
+    if [[ -d "$CLAUDE_DIR/debug" ]]; then
+        for f in "$CLAUDE_DIR/debug"/*.txt; do
+            [[ -f "$f" ]] || continue
+            uuid="$(basename "$f" .txt)"
+            is_uuid "$uuid" || continue
+            mtime=$(file_mtime_epoch "$f")
+            size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+            update_session "$uuid" "$mtime" "$size"
+        done
+    fi
+
+    # 7. file-history/UUID/
+    if [[ -d "$CLAUDE_DIR/file-history" ]]; then
+        for d in "$CLAUDE_DIR/file-history"/*/; do
+            [[ -d "$d" ]] || continue
+            uuid="$(basename "$d")"
+            is_uuid "$uuid" || continue
+            mtime=$(file_mtime_epoch "$d")
+            size=$(du -sb "$d" 2>/dev/null | cut -f1 || echo 0)
+            update_session "$uuid" "$mtime" "$size"
+        done
+    fi
+
+    # 8. history.jsonl — sessionId field
+    if [[ -f "$CLAUDE_DIR/history.jsonl" ]]; then
+        while IFS= read -r uuid; do
+            is_uuid "$uuid" || continue
+            # Don't override mtime from history — it's less reliable
+            if [[ -z "${SESSION_MTIME[$uuid]+x}" ]]; then
+                SESSION_MTIME["$uuid"]=0
+                SESSION_SIZE["$uuid"]=0
+                SESSION_LOCATIONS["$uuid"]=1
+            fi
+        done < <(python3 -c "
+import json, sys
+seen = set()
+for line in open('$CLAUDE_DIR/history.jsonl'):
+    try:
+        sid = json.loads(line).get('sessionId','')
+        if sid and sid not in seen:
+            seen.add(sid)
+            print(sid)
+    except: pass
+" 2>/dev/null)
+    fi
+}
+
+update_session() {
+    local uuid="$1" mtime="$2" size="$3"
+    local prev_mtime=${SESSION_MTIME[$uuid]:-0}
+    local prev_size=${SESSION_SIZE[$uuid]:-0}
+    local prev_locs=${SESSION_LOCATIONS[$uuid]:-0}
+
+    if (( mtime > prev_mtime )); then
+        SESSION_MTIME["$uuid"]=$mtime
+    fi
+    SESSION_SIZE["$uuid"]=$(( prev_size + size ))
+    SESSION_LOCATIONS["$uuid"]=$(( prev_locs + 1 ))
+}
+
+# --- Status classification ---
+determine_status() {
+    local now uuid mtime age_hours age_days
+    now=$(now_epoch)
+    local active_secs=$(( ACTIVE_HOURS * 3600 ))
+    local stale_secs=$(( STALE_DAYS * 86400 ))
+
+    for uuid in "${!SESSION_MTIME[@]}"; do
+        mtime=${SESSION_MTIME[$uuid]}
+        local age=$(( now - mtime ))
+
+        # Check if session-env dir exists and is recent + claude running
+        if [[ -d "$CLAUDE_DIR/session-env/$uuid" ]]; then
+            local env_mtime
+            env_mtime=$(file_mtime_epoch "$CLAUDE_DIR/session-env/$uuid")
+            local env_age=$(( now - env_mtime ))
+            if (( env_age < active_secs )) && any_claude_running; then
+                SESSION_STATUS["$uuid"]="ACTIVE"
+                continue
+            fi
+        fi
+
+        if (( age < stale_secs )); then
+            SESSION_STATUS["$uuid"]="RECENT"
+        else
+            SESSION_STATUS["$uuid"]="STALE"
+        fi
+    done
+}
+
+# --- Display ---
+display_sessions() {
+    local active=0 recent=0 stale=0
+    local active_size=0 recent_size=0 stale_size=0
+
+    # Collect and sort sessions by status then date
+    local lines=()
+    for uuid in "${!SESSION_MTIME[@]}"; do
+        local status="${SESSION_STATUS[$uuid]}"
+        local mtime="${SESSION_MTIME[$uuid]}"
+        local size="${SESSION_SIZE[$uuid]}"
+        local locs="${SESSION_LOCATIONS[$uuid]}"
+        # Sort key: ACTIVE=0, RECENT=1, STALE=2 + mtime (descending)
+        local sort_key
+        case "$status" in
+            ACTIVE) sort_key="0"; (( active++ )) || true; (( active_size += size )) || true ;;
+            RECENT) sort_key="1"; (( recent++ )) || true; (( recent_size += size )) || true ;;
+            STALE)  sort_key="2"; (( stale++ ))  || true; (( stale_size += size )) || true ;;
+        esac
+        lines+=("${sort_key}|${mtime}|${uuid}|${status}|${size}|${locs}")
+    done
+
+    # Sort: by status asc, then mtime desc
+    local sorted
+    sorted=$(printf '%s\n' "${lines[@]}" | sort -t'|' -k1,1n -k2,2nr)
+
+    # Print table header
+    printf "\n${BOLD}%-38s  %-8s  %-18s  %10s  %5s${RESET}\n" \
+        "SESSION UUID" "STATUS" "LAST ACTIVE" "SIZE" "LOCS"
+    printf '%.0s─' {1..85}; echo
+
+    while IFS='|' read -r _ mtime uuid status size locs; do
+        local color
+        case "$status" in
+            ACTIVE) color="$GREEN" ;;
+            RECENT) color="$YELLOW" ;;
+            STALE)  color="$RED" ;;
+        esac
+        local short_uuid="${uuid:0:8}…${uuid:(-4)}"
+        printf "${color}%-38s  %-8s${RESET}  %-18s  %10s  %5s\n" \
+            "$short_uuid" "$status" "$(human_date "$mtime")" "$(human_size "$size")" "$locs"
+    done <<< "$sorted"
+
+    printf '%.0s─' {1..85}; echo
+
+    # Summary
+    echo ""
+    printf "${BOLD}Summary:${RESET}\n"
+    printf "  ${GREEN}Active:${RESET}  %3d sessions  (%s)\n" "$active" "$(human_size $active_size)"
+    printf "  ${YELLOW}Recent:${RESET}  %3d sessions  (%s) — not eligible for cleanup\n" "$recent" "$(human_size $recent_size)"
+    printf "  ${RED}Stale:${RESET}   %3d sessions  (%s)\n" "$stale" "$(human_size $stale_size)"
+
+    # Store for later use
+    TOTAL_ACTIVE=$active
+    TOTAL_RECENT=$recent
+    TOTAL_STALE=$stale
+    TOTAL_STALE_SIZE=$stale_size
+}
+
+# --- Orphaned /tmp files ---
+declare -a ORPHANED_TMP=()
+ORPHANED_TMP_SIZE=0
+
+gather_orphaned_tmp() {
+    local f pid
+    for f in /tmp/claude-*-cwd; do
+        [[ -e "$f" ]] || continue
+        # Extract hex PID from filename: /tmp/claude-XXXX-cwd
+        local base
+        base="$(basename "$f")"
+        local hex="${base#claude-}"
+        hex="${hex%-cwd}"
+        # Convert hex to decimal PID
+        pid=$(( 16#$hex )) 2>/dev/null || continue
+        # Check if PID is still running
+        if ! kill -0 "$pid" 2>/dev/null; then
+            ORPHANED_TMP+=("$f")
+            local sz
+            sz=$(stat -c %s "$f" 2>/dev/null || echo 0)
+            (( ORPHANED_TMP_SIZE += sz )) || true
+        fi
+    done
+
+    # Also check /tmp/claude-1000/ if it exists and no claude process owns it
+    if [[ -d "/tmp/claude-1000" ]]; then
+        # Check if any files inside are being used by running processes
+        local tmp_dir_size
+        tmp_dir_size=$(du -sb /tmp/claude-1000 2>/dev/null | cut -f1 || echo 0)
+        # We'll offer to clean this separately — it may contain useful sockets
+    fi
+}
+
+# --- Old agent logs ---
+declare -a OLD_AGENT_LOGS=()
+OLD_AGENT_LOGS_SIZE=0
+
+gather_old_agent_logs() {
+    while IFS= read -r f; do
+        OLD_AGENT_LOGS+=("$f")
+        local sz
+        sz=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        (( OLD_AGENT_LOGS_SIZE += sz )) || true
+    done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -name 'agent-*.jsonl' -type f 2>/dev/null)
+}
+
+# --- Clean a single session ---
+clean_session() {
+    local uuid="$1"
+
+    # 1. projects/*/UUID.jsonl
+    while IFS= read -r f; do
+        safe_rm "$f"
+    done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -name "${uuid}.jsonl" -type f 2>/dev/null)
+
+    # 2. projects/*/UUID/
+    while IFS= read -r d; do
+        safe_rm "$d"
+    done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -name "$uuid" -type d 2>/dev/null)
+
+    # 3. session-env/UUID/
+    [[ -d "$CLAUDE_DIR/session-env/$uuid" ]] && safe_rm "$CLAUDE_DIR/session-env/$uuid"
+
+    # 4. todos/UUID-agent-*.json
+    for f in "$CLAUDE_DIR/todos/${uuid}"-agent-*.json; do
+        [[ -f "$f" ]] && safe_rm "$f"
+    done
+
+    # 5. tasks/UUID/
+    [[ -d "$CLAUDE_DIR/tasks/$uuid" ]] && safe_rm "$CLAUDE_DIR/tasks/$uuid"
+
+    # 6. debug/UUID.txt
+    [[ -f "$CLAUDE_DIR/debug/${uuid}.txt" ]] && safe_rm "$CLAUDE_DIR/debug/${uuid}.txt"
+
+    # 7. file-history/UUID/
+    [[ -d "$CLAUDE_DIR/file-history/$uuid" ]] && safe_rm "$CLAUDE_DIR/file-history/$uuid"
+}
+
+# --- Clean /tmp orphans ---
+clean_tmp() {
+    for f in "${ORPHANED_TMP[@]}"; do
+        safe_rm "$f"
+    done
+}
+
+# --- Clean old agent logs ---
+clean_agent_logs() {
+    for f in "${OLD_AGENT_LOGS[@]}"; do
+        safe_rm "$f"
+    done
+}
+
+# --- Clean history.jsonl entries ---
+clean_history() {
+    local uuids_file="$1"
+    local history="$CLAUDE_DIR/history.jsonl"
+    [[ -f "$history" ]] || return 0
+
+    local before_lines
+    before_lines=$(wc -l < "$history")
+
+    if $DRY_RUN; then
+        local would_remove
+        would_remove=$(python3 -c "
+import json, sys
+uuids = set(open('$uuids_file').read().split())
+count = 0
+for line in open('$history'):
+    try:
+        if json.loads(line).get('sessionId','') in uuids:
+            count += 1
+    except: pass
+print(count)
+" 2>/dev/null)
+        echo "  [dry-run] Would remove $would_remove entries from history.jsonl (of $before_lines total)"
+        return 0
+    fi
+
+    # Backup
+    local backup="$CLAUDE_DIR/backups/history.jsonl.$(date +%Y%m%d_%H%M%S).bak"
+    mkdir -p "$CLAUDE_DIR/backups"
+    cp "$history" "$backup"
+    echo "  Backed up history.jsonl to $backup"
+
+    # Filter
+    python3 -c "
+import json, sys
+uuids = set(open('$uuids_file').read().split())
+kept = 0
+removed = 0
+with open('$history') as fin, open('${history}.tmp', 'w') as fout:
+    for line in fin:
+        try:
+            sid = json.loads(line).get('sessionId','')
+            if sid in uuids:
+                removed += 1
+                continue
+        except:
+            pass
+        fout.write(line)
+        kept += 1
+print(f'  history.jsonl: kept {kept}, removed {removed} entries')
+" 2>/dev/null
+    mv "${history}.tmp" "$history"
+}
+
+# --- Interactive selection ---
+select_sessions() {
+    local stale_uuids=()
+    for uuid in "${!SESSION_STATUS[@]}"; do
+        [[ "${SESSION_STATUS[$uuid]}" == "STALE" ]] && stale_uuids+=("$uuid")
+    done
+
+    # Sort by mtime ascending (oldest first)
+    local sorted_stale
+    sorted_stale=$(for uuid in "${stale_uuids[@]}"; do
+        echo "${SESSION_MTIME[$uuid]}|$uuid"
+    done | sort -t'|' -k1,1n)
+
+    echo ""
+    echo "Select sessions to clean (space-separated numbers, 'all', or 'none'):"
+    echo ""
+    local i=1
+    local indexed_uuids=()
+    while IFS='|' read -r mtime uuid; do
+        local short="${uuid:0:8}…${uuid:(-4)}"
+        printf "  %3d) %s  %-18s  %s\n" "$i" "$short" "$(human_date "$mtime")" "$(human_size "${SESSION_SIZE[$uuid]}")"
+        indexed_uuids+=("$uuid")
+        (( i++ )) || true
+    done <<< "$sorted_stale"
+
+    echo ""
+    read -rp "Selection: " selection
+
+    SELECTED_UUIDS=()
+    case "$selection" in
+        all|ALL)
+            SELECTED_UUIDS=("${indexed_uuids[@]}")
+            ;;
+        none|NONE|"")
+            return 1
+            ;;
+        *)
+            for num in $selection; do
+                if [[ "$num" =~ ^[0-9]+$ ]] && (( num >= 1 && num <= ${#indexed_uuids[@]} )); then
+                    SELECTED_UUIDS+=("${indexed_uuids[$((num-1))]}")
+                fi
+            done
+            ;;
+    esac
+    [[ ${#SELECTED_UUIDS[@]} -gt 0 ]]
+}
+
+# --- Main ---
+main() {
+    echo -e "${BOLD}Claude Code Session Cleanup v${VERSION}${RESET}"
+    if $DRY_RUN; then
+        echo -e "${CYAN}(dry-run mode — no files will be deleted)${RESET}"
+    fi
+    echo ""
+
+    echo "Scanning session data..."
+    gather_claude_pids
+    gather_sessions
+    determine_status
+    gather_orphaned_tmp
+    gather_old_agent_logs
+
+    display_sessions
+
+    # /tmp info
+    printf "  ${DIM}Orphaned /tmp:${RESET} %d files  (%s)\n" "${#ORPHANED_TMP[@]}" "$(human_size $ORPHANED_TMP_SIZE)"
+    printf "  ${DIM}Old agent logs:${RESET} %d files  (%s)\n" "${#OLD_AGENT_LOGS[@]}" "$(human_size $OLD_AGENT_LOGS_SIZE)"
+    echo ""
+
+    # Nothing to clean?
+    if (( TOTAL_STALE == 0 )) && (( ${#ORPHANED_TMP[@]} == 0 )) && (( ${#OLD_AGENT_LOGS[@]} == 0 )); then
+        echo -e "${GREEN}Nothing to clean. All sessions are active or recent.${RESET}"
+        exit 0
+    fi
+
+    # Dry-run: just show summary and exit
+    if $DRY_RUN; then
+        echo -e "${CYAN}Dry-run complete. Use without --dry-run to clean.${RESET}"
+        exit 0
+    fi
+
+    # Collect stale UUIDs
+    local stale_uuids=()
+    for uuid in "${!SESSION_STATUS[@]}"; do
+        [[ "${SESSION_STATUS[$uuid]}" == "STALE" ]] && stale_uuids+=("$uuid")
+    done
+
+    local do_clean_sessions=false
+    local do_clean_tmp=false
+    local do_clean_agent_logs=false
+    SELECTED_UUIDS=()
+
+    if $FORCE; then
+        # Force mode: clean everything stale
+        SELECTED_UUIDS=("${stale_uuids[@]}")
+        do_clean_sessions=true
+        do_clean_tmp=true
+        do_clean_agent_logs=true
+    else
+        # Interactive
+        if (( TOTAL_STALE > 0 )); then
+            echo -e "Clean stale sessions? [${BOLD}y${RESET}/N/select]"
+            echo "  y      — delete all ${TOTAL_STALE} stale sessions ($(human_size $TOTAL_STALE_SIZE))"
+            echo "  select — pick which stale sessions to delete"
+            echo "  N      — skip"
+            read -rp "> " answer
+            case "$answer" in
+                y|Y|yes)
+                    SELECTED_UUIDS=("${stale_uuids[@]}")
+                    do_clean_sessions=true
+                    ;;
+                s|select|S|SELECT)
+                    if select_sessions; then
+                        do_clean_sessions=true
+                    fi
+                    ;;
+                *)
+                    echo "Skipping session cleanup."
+                    ;;
+            esac
+        fi
+
+        if (( ${#ORPHANED_TMP[@]} > 0 )); then
+            echo ""
+            read -rp "Clean ${#ORPHANED_TMP[@]} orphaned /tmp files ($(human_size $ORPHANED_TMP_SIZE))? [Y/n] " answer
+            case "$answer" in
+                n|N|no) ;;
+                *) do_clean_tmp=true ;;
+            esac
+        fi
+
+        if (( ${#OLD_AGENT_LOGS[@]} > 0 )); then
+            echo ""
+            read -rp "Clean ${#OLD_AGENT_LOGS[@]} old agent logs ($(human_size $OLD_AGENT_LOGS_SIZE))? [Y/n] " answer
+            case "$answer" in
+                n|N|no) ;;
+                *) do_clean_agent_logs=true ;;
+            esac
+        fi
+    fi
+
+    # Execute cleanup
+    local cleaned=0
+
+    if $do_clean_sessions && (( ${#SELECTED_UUIDS[@]} > 0 )); then
+        echo ""
+        echo -e "${BOLD}Cleaning ${#SELECTED_UUIDS[@]} sessions...${RESET}"
+        for uuid in "${SELECTED_UUIDS[@]}"; do
+            clean_session "$uuid"
+            (( cleaned++ )) || true
+        done
+
+        # Clean history.jsonl
+        local tmpfile
+        tmpfile=$(mktemp)
+        printf '%s\n' "${SELECTED_UUIDS[@]}" > "$tmpfile"
+        clean_history "$tmpfile"
+        rm -f "$tmpfile"
+
+        echo "  Cleaned $cleaned sessions."
+    fi
+
+    if $do_clean_tmp; then
+        echo ""
+        echo -e "${BOLD}Cleaning orphaned /tmp files...${RESET}"
+        clean_tmp
+        echo "  Cleaned ${#ORPHANED_TMP[@]} files."
+    fi
+
+    if $do_clean_agent_logs; then
+        echo ""
+        echo -e "${BOLD}Cleaning old agent logs...${RESET}"
+        clean_agent_logs
+        echo "  Cleaned ${#OLD_AGENT_LOGS[@]} files."
+    fi
+
+    echo ""
+    echo -e "${GREEN}Done.${RESET}"
+}
+
+main "$@"

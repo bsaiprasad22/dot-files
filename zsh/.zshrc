@@ -116,13 +116,11 @@ fi
 # source $ZSH/oh-my-zsh.sh
 # ZSH_THEME=agnoster
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
-
+export PATH="$HOME/.local/bin:$PATH"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 
-eval "$(zoxide init zsh)"
-export PATH="$HOME/.local/bin:$PATH"
 # [ -f "$HOME/.config/claude-code/env.sh" ] && source "$HOME/.config/claude-code/env.sh"
 
 # Jira MCP Server Configuration (Pensando Atlassian)
@@ -132,3 +130,34 @@ export JIRA_USERNAME="sai.bapa@amd.com"
 alias ta="tmux attach -t"
 alias tk="tmux kill-session -t"
 alias tn="tmux new-session -s"
+
+# Launch claude inside a named tmux session
+claude-session() {
+  if [[ -n "$TMUX" ]]; then
+    echo "Already in tmux session: $(tmux display-message -p '#S')"
+    command claude "$@"
+    return
+  fi
+
+  local session_name=""
+  while [[ -z "$session_name" ]]; do
+    printf "tmux session name (e.g. INFRA-1234): "
+    read session_name
+    [[ -z "$session_name" ]] && echo "Session name cannot be empty."
+  done
+
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "tmux session '$session_name' already exists."
+    printf "Attach to it? [y/n]: "
+    read yn
+    case "$yn" in
+      [Yy]*) tmux attach -t "$session_name" ;;
+      *) echo "Cancelled." ;;
+    esac
+  else
+    tmux new-session -s "$session_name" "claude $*"
+  fi
+}
+alias cs="claude-session"
+
+export DOCKER_API_VERSION=1.49

@@ -1,14 +1,16 @@
+---
+name: code-simplifier
+description: Analyzes a project for over-engineered, convoluted, or unnecessarily complex code and suggests simplifications. Use when user asks to simplify code, find over-engineering, or reduce complexity.
+tools: Read, Grep, Glob, Bash
+model: opus
+maxTurns: 50
+---
+
 # Code Simplifier
 
 Analyze a project for over-engineered, convoluted, or unnecessarily complex code and suggest simplifications.
 
-## Usage
-
-```
-/code-simplify [options]
-```
-
-### Options
+## Options (passed via prompt)
 
 - `--auto-fix` - Automatically apply fixes without confirmation
 - `--path=<dir>` - Target specific directory (default: current project root)
@@ -174,43 +176,12 @@ Present findings organized by severity:
 **Pattern:** Interface with single implementation
 
 **Current Code:**
-```typescript
-// UserServiceInterface.ts
-export interface IUserService {
-  getUser(id: string): Promise<User>;
-}
-
-// UserService.ts
-export class UserService implements IUserService {
-  getUser(id: string): Promise<User> { ... }
-}
-
-// usage.ts
-const service: IUserService = new UserService();
-```
+[show code]
 
 **Simplified:**
-```typescript
-// UserService.ts
-export class UserService {
-  getUser(id: string): Promise<User> { ... }
-}
-
-// usage.ts
-const service = new UserService();
-```
+[show simplified code]
 
 **Files to delete:** `src/services/UserServiceInterface.ts`
-
-[ ] Apply this fix?
-
----
-
-#### 2. Premature Generalization
-**File:** `src/utils/createHandler.ts:5`
-**Pattern:** Factory function used once
-
-...
 
 ---
 
@@ -231,47 +202,9 @@ const service = new UserService();
 | Low      | 3     | ~30               |
 
 **Total simplification:** ~235 lines of unnecessary code
-
----
-
-## Actions
-
-Choose an option:
-1. Apply all high severity fixes
-2. Apply all fixes
-3. Review each fix individually
-4. Export report and exit
 ```
 
-### 5. Fix Application
-
-When applying fixes:
-
-1. **Show the change** clearly with before/after
-2. **Ask for confirmation** (unless `--auto-fix`)
-3. **Apply using Edit tool** for modifications
-4. **Delete files** if entire file is unnecessary
-5. **Track changes** for final summary
-6. **Run project checks** after all fixes:
-   ```bash
-   # Verify no syntax errors
-   npm run build 2>&1 | head -20  # or equivalent for language
-
-   # Run tests if available
-   npm test 2>&1 | tail -20  # or equivalent
-   ```
-
-### 6. User Confirmation Flow
-
-For each fix (unless `--auto-fix`):
-
-```
-Apply fix #1: Remove IUserService interface?
-[y] Yes  [n] No  [a] Apply all remaining  [s] Skip all remaining  [q] Quit
->
-```
-
-### 7. Language-Specific Considerations
+### 5. Language-Specific Considerations
 
 #### TypeScript/JavaScript
 - Check for `any` types that could be specific
@@ -293,7 +226,7 @@ Apply fix #1: Remove IUserService interface?
 - Find overly complex lifetime annotations
 - Look for trait implementations used once
 
-### 8. Exclusions
+### 6. Exclusions
 
 Skip analysis of:
 - `node_modules/`, `vendor/`, `venv/`, `.venv/`
@@ -304,32 +237,6 @@ Skip analysis of:
 - Test fixtures/snapshots
 - Files matching `.gitignore` patterns
 
-### 9. Final Summary
+### 7. Final Output
 
-After all fixes applied:
-
-```markdown
-## Simplification Complete
-
-**Changes Made:**
-- Removed 3 unnecessary interfaces
-- Inlined 5 wrapper functions
-- Deleted 2 unused utility files
-- Simplified 4 complex conditionals
-
-**Files Modified:** 12
-**Files Deleted:** 2
-**Lines Removed:** 187
-
-**Build Status:** ✓ Passing
-**Tests:** ✓ 45/45 passing
-
-The codebase is now simpler and more maintainable.
-```
-
-## Error Handling
-
-- If build fails after changes: Offer to revert last change
-- If tests fail: Show which tests, offer to revert
-- If file can't be parsed: Skip with warning, continue analysis
-- If uncertain about fix: Mark as "needs review" instead of auto-fixing
+Return the full report to the caller. Include actionable recommendations with file:line references and before/after code for each issue found.

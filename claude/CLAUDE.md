@@ -14,6 +14,14 @@
 - Verify the test fails before fixing to ensure test correctness
 - Only then make the test pass with the implementation
 
+## Dot-Files & Stow
+
+- **All** skills, commands, subagents, hooks, and generic binaries must live in `~/dot-files` and be symlinked via GNU Stow
+- Claude-specific items go in `dot-files/claude/.claude/` (skills, agents, commands, notify.sh, settings.json)
+- Generic scripts go in `dot-files/bin/.local/bin/` (targets `~/.local/bin/`)
+- Never place new scripts/configs directly in `~/.claude/` or `~/bin/` — always add to dot-files first, then stow
+- If unsure whether something belongs in dot-files, ask the user
+
 ## Project Setup
 
 When starting any new project, task, or bug fix:
@@ -38,9 +46,15 @@ npm install --legacy-peer-deps
 
 **Important:** Always use `--legacy-peer-deps` flag when running npm install for penops-ui projects.
 
+## MCP Server Preferences
+
+- **Jira**: Always use `pensando_jira` MCP server (`mcp__pensando_jira__*` tools)
+- **Confluence**: Always use `cloud_atlassian` MCP server (`mcp__cloud_atlassian__confluence_*` tools)
+
 ## Jira Integration
 
-- **Commit messages**: Always include the Jira ID at the start of commit messages (e.g., `PROJ-1234: Fix login validation bug`)
+- **Project key**: Always use the `INFRA` project when creating Jira tickets
+- **Commit messages**: Always include the Jira ID at the start of commit messages (e.g., `INFRA-1234: Fix login validation bug`)
 - **Status updates**: Move the ticket to "In Progress" when starting work on a task
 - **Session summary**: At the end of a task, post a comment to the Jira ticket via MCP that includes:
   - Overall changes made (files added/modified/deleted)
@@ -132,6 +146,22 @@ Prioritize maintainability and modularity. For each architectural decision, expl
 |--------|-------------|-----------------|
 | SQL over NoSQL | NoSQL | Relational data, ACID needed, team expertise |
 ```
+
+### Architect Planning Workflow
+
+When entering plan mode, follow the **three-phase workflow** (detailed in memory: `architect-workflow.md`):
+
+1. **Architect Draft** — explore codebase, draft full plan, save to `~/.claude/plans/<JIRA-ID>.md`
+2. **Devil's Advocate Challenge** — launch `devils-advocate` subagent against the plan
+   - Focus: over-engineering, missing edge cases. Never compromise security/performance
+   - Max 2 rounds. If still contested after round 2, escalate to user — don't loop
+   - Update plan with accepted findings, reject with reason in trade-offs table
+3. **Simplification Pass** — re-read entire plan, remove anything non-essential
+   - Keep: security, performance, boundary error handling
+   - Remove: single-use abstractions, "just in case" config, pass-through layers
+   - When unsure, ask the user
+4. **Append Review Log** to plan showing what changed and why
+5. **ExitPlanMode** for user approval
 
 ### Anti-Patterns to Avoid
 

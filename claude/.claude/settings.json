@@ -1,0 +1,20 @@
+{
+  "model": "opus[1m]",
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/notify.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); hostname=$(hostname -s); cwd=$(echo \"$input\" | jq -r '.workspace.current_dir'); session=$(echo \"$input\" | jq -r '.session_name // empty'); remaining=$(echo \"$input\" | jq -r '.context_window.remaining_percentage // empty'); short_dir=$(echo \"$cwd\" | awk -F'/' '{n=NF; if(n<=3) print $0; else printf \".../%s/%s/%s\",$(n-2),$(n-1),$n}'); short_dir=\"${short_dir/#$HOME/~}\"; branch=$(git -C \"$cwd\" --no-optional-locks branch --show-current 2>/dev/null || git -C \"$cwd\" --no-optional-locks rev-parse --short HEAD 2>/dev/null); git_info=\"\"; [ -n \"$branch\" ] && git_info=$(printf \"\\033[1;36m‹%s› \\033[0m\" \"$branch\"); context=\"\"; [ -n \"$remaining\" ] && context=$(printf \"\\033[2m[%s%% remain] \\033[0m\" \"$remaining\"); sess=\"\"; [ -n \"$session\" ] && sess=$(printf \"\\033[2m[%s] \\033[0m\" \"$session\"); printf \"%s\\033[1;35m :: \\033[0m\\033[32m%s\\033[0m %s%s%s\" \"$hostname\" \"$short_dir\" \"$git_info\" \"$sess\" \"$context\""
+  }
+}
