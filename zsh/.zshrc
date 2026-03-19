@@ -130,6 +130,7 @@ export JIRA_USERNAME="sai.bapa@amd.com"
 alias ta="tmux attach -t"
 alias tk="tmux kill-session -t"
 alias tn="tmux new-session -s"
+alias lg="lazygit"
 
 # Launch claude inside a named tmux session
 claude-session() {

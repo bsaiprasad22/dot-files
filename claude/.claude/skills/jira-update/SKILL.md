@@ -1,3 +1,10 @@
+---
+name: jira-update
+description: Intelligent Jira ticket management - create, update, track work, and close tickets based on git branch context. Use when updating Jira tickets, logging work, completing tasks, or syncing ticket state.
+argument-hint: "[start|update|complete|sync|status] [--time=duration] [--pr]"
+disable-model-invocation: true
+---
+
 # Jira Update
 
 Intelligent Jira ticket management - create, update, track work, and close tickets based on git branch context.
@@ -23,29 +30,22 @@ Intelligent Jira ticket management - create, update, track work, and close ticke
 - `--message=<text>` - Work description for worklog
 - `--pr` - Include PR information in update
 
+## Pre-loaded Context
+
+**Current branch (Jira ID):** !`git branch --show-current 2>/dev/null`
+**Recent commits:** !`git log --oneline -10 2>/dev/null`
+**Changed files vs main:** !`git diff --name-only main...HEAD 2>/dev/null`
+**Open PRs:** !`gh pr list --head $(git branch --show-current 2>/dev/null) --json number,title,state,url 2>/dev/null`
+
 ## Instructions
 
 ### 1. Context Gathering
 
-First, gather context from the current environment:
-
-```bash
-# Get current branch (this IS the Jira ID)
-git branch --show-current
-
-# Get recent commits on this branch
-git log --oneline -10
-
-# Get changed files
-git diff --name-only main...HEAD 2>/dev/null || git diff --name-only HEAD~10...HEAD
-
-# Check for open PRs
-gh pr list --head $(git branch --show-current) --json number,title,state,url 2>/dev/null
-```
+Use the pre-loaded context above. The branch name IS the Jira ID.
 
 ### 2. Determine Jira Ticket
 
-- Branch name IS the Jira ID (e.g., `INFRA-1234`)
+- Use the branch name from pre-loaded context as the Jira ID (e.g., `INFRA-1234`)
 - If branch doesn't match pattern `[A-Z]+-[0-9]+`, ask user for Jira ID
 - Default project is `INFRA` if only number provided
 

@@ -37,17 +37,8 @@ fi
 if [ -n "$TMUX" ]; then
   # tmux 3.2: wrap OSC in DCS passthrough so it reaches WezTerm
   printf '\ePtmux;\e\033]9;Claude Code %s: %s\a\e\\' "$label" "$msg" > "$tty" 2>/dev/null
-
-  # Send user-var "focus" so WezTerm Lua config can activate this tab
-  # OSC 1337 ; SetUserVar=name=base64(value) BEL — also DCS-wrapped
-  val=$(printf '1' | base64)
-  printf '\ePtmux;\e\033]1337;SetUserVar=claude_focus=%s\a\e\\' "$val" > "$tty" 2>/dev/null
 else
   printf '\033]9;Claude Code %s: %s\a' "$label" "$msg" > "$tty" 2>/dev/null
-
-  # Send user-var for focus (direct terminal)
-  val=$(printf '1' | base64)
-  printf '\033]1337;SetUserVar=claude_focus=%s\a' "$val" > "$tty" 2>/dev/null
 fi
 
 # If in tmux, also display a tmux message (visible when attached)

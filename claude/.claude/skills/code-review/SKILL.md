@@ -1,10 +1,25 @@
+---
+name: code-review
+description: Review staged git changes for bugs, security issues, performance problems, and best practice violations. Use when reviewing code before committing, checking for issues in staged changes, or doing a pre-commit review.
+disable-model-invocation: true
+allowed-tools: Read, Grep, Glob
+---
+
 # Code Review
 
 Review staged changes for issues and provide a summary.
 
+## Pre-loaded Context
+
+**Staged diff:**
+!`git diff --cached 2>/dev/null`
+
+**Staged files:**
+!`git diff --cached --name-only 2>/dev/null`
+
 ## Instructions
 
-1. Get the staged changes using `git diff --cached`
+1. Use the pre-loaded staged diff above for analysis. Read full files via `Read` tool if more context is needed.
 2. Analyze the changes for issues in the following priority order:
    - **Bugs**: Logic errors, null/undefined issues, edge cases, incorrect behavior
    - **Security**: Vulnerabilities, injection risks, exposed secrets, unsafe operations

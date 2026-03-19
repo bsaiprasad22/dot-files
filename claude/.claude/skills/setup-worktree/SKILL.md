@@ -1,3 +1,10 @@
+---
+name: setup
+description: Initialize git worktree with Jira integration - create or link ticket, setup branch, install deps. Use when starting new tasks, projects, or bug fixes.
+argument-hint: "[task description] [--jira=ID] [--repo=path] [--priority=P0-P5]"
+disable-model-invocation: true
+---
+
 # Setup Worktree
 
 Initialize worktree with Jira integration - create or link ticket, setup branch, install deps.

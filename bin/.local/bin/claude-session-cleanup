@@ -388,21 +388,21 @@ clean_session() {
     done < <(find "$CLAUDE_DIR/projects/" -maxdepth 2 -name "$uuid" -type d 2>/dev/null)
 
     # 3. session-env/UUID/
-    [[ -d "$CLAUDE_DIR/session-env/$uuid" ]] && safe_rm "$CLAUDE_DIR/session-env/$uuid"
+    [[ -d "$CLAUDE_DIR/session-env/$uuid" ]] && safe_rm "$CLAUDE_DIR/session-env/$uuid" || true
 
     # 4. todos/UUID-agent-*.json
     for f in "$CLAUDE_DIR/todos/${uuid}"-agent-*.json; do
-        [[ -f "$f" ]] && safe_rm "$f"
+        [[ -f "$f" ]] && safe_rm "$f" || true
     done
 
     # 5. tasks/UUID/
-    [[ -d "$CLAUDE_DIR/tasks/$uuid" ]] && safe_rm "$CLAUDE_DIR/tasks/$uuid"
+    [[ -d "$CLAUDE_DIR/tasks/$uuid" ]] && safe_rm "$CLAUDE_DIR/tasks/$uuid" || true
 
     # 6. debug/UUID.txt
-    [[ -f "$CLAUDE_DIR/debug/${uuid}.txt" ]] && safe_rm "$CLAUDE_DIR/debug/${uuid}.txt"
+    [[ -f "$CLAUDE_DIR/debug/${uuid}.txt" ]] && safe_rm "$CLAUDE_DIR/debug/${uuid}.txt" || true
 
     # 7. file-history/UUID/
-    [[ -d "$CLAUDE_DIR/file-history/$uuid" ]] && safe_rm "$CLAUDE_DIR/file-history/$uuid"
+    [[ -d "$CLAUDE_DIR/file-history/$uuid" ]] && safe_rm "$CLAUDE_DIR/file-history/$uuid" || true
 }
 
 # --- Clean /tmp orphans ---

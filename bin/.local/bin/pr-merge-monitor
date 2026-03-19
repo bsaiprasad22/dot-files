@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+# pr-merge-monitor — polls GitHub for merged PRs, transitions Jira tickets to Done
+# Designed to run via cron every 5 minutes
+set -euo pipefail
+
+# --- Config ---
+CREDS_FILE="${HOME}/.config/jira/credentials"
+STATE_DIR="${HOME}/.local/share/pr-merge-monitor"
+STATE_FILE="${STATE_DIR}/processed.txt"
+LOG_FILE="${STATE_DIR}/monitor.log"
+JIRA_TRANSITION_ID="41"  # Closed (Done category)
+
+# --- Helpers ---
+log() { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*" >> "$LOG_FILE"; }
+
+die() { log "ERROR: $*"; exit 1; }
+
+# --- Setup ---
+mkdir -p "$STATE_DIR"
+touch "$STATE_FILE"
+
+# Rotate log if > 1MB
+if [[ -f "$LOG_FILE" ]] && (( $(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) > 1048576 )); then
+    mv "$LOG_FILE" "${LOG_FILE}.old"
+fi
+
+# Load Jira credentials
+if [[ ! -f "$CREDS_FILE" ]]; then
+    die "Jira credentials not found at $CREDS_FILE. Create it with JIRA_URL, JIRA_EMAIL, JIRA_TOKEN"
+fi
+# shellcheck source=/dev/null
+source "$CREDS_FILE"
+
+[[ -n "${JIRA_URL:-}" ]] || die "JIRA_URL not set in $CREDS_FILE"
+[[ -n "${JIRA_EMAIL:-}" ]] || die "JIRA_EMAIL not set in $CREDS_FILE"
+[[ -n "${JIRA_TOKEN:-}" ]] || die "JIRA_TOKEN not set in $CREDS_FILE"
+
+# Check gh CLI
+command -v gh &>/dev/null || die "gh CLI not found"
+gh auth status &>/dev/null || die "gh CLI not authenticated"
+
+# --- Functions ---
+
+extract_jira_id() {
+    # Extract JIRA ID (e.g., INFRA-1234) from branch name
+    local branch="$1"
+    echo "$branch" | grep -oE '[A-Z]+-[0-9]+' | head -1
+}
+
+is_processed() {
+    local pr_id="$1"
+    grep -qxF "$pr_id" "$STATE_FILE"
+}
+
+mark_processed() {
+    local pr_id="$1"
+    echo "$pr_id" >> "$STATE_FILE"
+}
+
+jira_api() {
+    local method="$1" endpoint="$2" data="${3:-}"
+    local args=(-s -w "\n%{http_code}" -X "$method"
+        -u "${JIRA_EMAIL}:${JIRA_TOKEN}"
+        -H "Content-Type: application/json"
+        "${JIRA_URL}/rest/api/3${endpoint}")
+
+    if [[ -n "$data" ]]; then
+        args+=(-d "$data")
+    fi
+
+    curl "${args[@]}"
+}
+
+get_issue_status() {
+    local issue_key="$1"
+    local response
+    response=$(jira_api GET "/issue/${issue_key}?fields=status")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+    local body
+    body=$(echo "$response" | sed '$d')
+
+    if [[ "$http_code" == "200" ]]; then
+        echo "$body" | jq -r '.fields.status.statusCategory.key'
+    else
+        echo "unknown"
+    fi
+}
+
+transition_ticket() {
+    local issue_key="$1"
+
+    # Check if already done — skip transition gracefully
+    local status_category
+    status_category=$(get_issue_status "$issue_key")
+    if [[ "$status_category" == "done" ]]; then
+        log "${issue_key} already in Done category — skipping transition"
+        return 0
+    fi
+
+    local payload
+    payload=$(cat <<EOF
+{"transition": {"id": "${JIRA_TRANSITION_ID}"}}
+EOF
+    )
+
+    local response
+    response=$(jira_api POST "/issue/${issue_key}/transitions" "$payload")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+
+    if [[ "$http_code" == "204" ]]; then
+        log "Transitioned ${issue_key} to Done"
+        return 0
+    else
+        log "Failed to transition ${issue_key} (HTTP ${http_code}): $(echo "$response" | sed '$d')"
+        return 1
+    fi
+}
+
+add_comment() {
+    local issue_key="$1" pr_url="$2" pr_title="$3" merged_by="$4" merged_at="$5" repo="$6"
+
+    # Atlassian Document Format (ADF)
+    local payload
+    payload=$(cat <<EOF
+{
+  "body": {
+    "version": 1,
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          {"type": "text", "text": "PR merged", "marks": [{"type": "strong"}]}
+        ]
+      },
+      {
+        "type": "bulletList",
+        "content": [
+          {
+            "type": "listItem",
+            "content": [{"type": "paragraph", "content": [
+              {"type": "text", "text": "Repo: "},
+              {"type": "text", "text": "${repo}"}
+            ]}]
+          },
+          {
+            "type": "listItem",
+            "content": [{"type": "paragraph", "content": [
+              {"type": "text", "text": "PR: "},
+              {"type": "text", "text": "${pr_title}", "marks": [{"type": "link", "attrs": {"href": "${pr_url}"}}]}
+            ]}]
+          },
+          {
+            "type": "listItem",
+            "content": [{"type": "paragraph", "content": [
+              {"type": "text", "text": "Merged by: "},
+              {"type": "text", "text": "${merged_by}"}
+            ]}]
+          },
+          {
+            "type": "listItem",
+            "content": [{"type": "paragraph", "content": [
+              {"type": "text", "text": "Merged at: "},
+              {"type": "text", "text": "${merged_at}"}
+            ]}]
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+    )
+
+    local response
+    response=$(jira_api POST "/issue/${issue_key}/comment" "$payload")
+    local http_code
+    http_code=$(echo "$response" | tail -1)
+
+    if [[ "$http_code" == "201" ]]; then
+        log "Added merge comment to ${issue_key}"
+    else
+        log "Failed to add comment to ${issue_key} (HTTP ${http_code})"
+    fi
+}
+
+# --- Main ---
+log "Starting PR merge monitor scan"
+
+# Search for recently merged PRs authored by current user
+# gh search returns PRs merged across all repos
+merged_prs=$(gh search prs --author=@me --state=merged --merged=">$(date -d '15 minutes ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --json number,title,url,headRefName,mergedAt,repository,mergedBy \
+    --jq '.[]' 2>/dev/null) || true
+
+if [[ -z "$merged_prs" ]]; then
+    log "No recently merged PRs found"
+    exit 0
+fi
+
+# Process each merged PR
+echo "$merged_prs" | while IFS= read -r pr_json; do
+    [[ -z "$pr_json" ]] && continue
+
+    pr_url=$(echo "$pr_json" | jq -r '.url')
+    pr_number=$(echo "$pr_json" | jq -r '.number')
+    pr_title=$(echo "$pr_json" | jq -r '.title')
+    branch=$(echo "$pr_json" | jq -r '.headRefName')
+    merged_at=$(echo "$pr_json" | jq -r '.mergedAt')
+    repo_full=$(echo "$pr_json" | jq -r '.repository.nameWithOwner')
+    merged_by=$(echo "$pr_json" | jq -r '.mergedBy.login')
+
+    # Unique ID for dedup
+    pr_id="${repo_full}#${pr_number}"
+
+    if is_processed "$pr_id"; then
+        continue
+    fi
+
+    jira_id=$(extract_jira_id "$branch")
+    if [[ -z "$jira_id" ]]; then
+        log "No Jira ID in branch '${branch}' for PR ${pr_id} — skipping"
+        mark_processed "$pr_id"
+        continue
+    fi
+
+    log "Processing ${pr_id} → ${jira_id}"
+
+    # Transition to Done (skips gracefully if already closed)
+    transition_ticket "$jira_id"
+
+    # Always add merge comment regardless of transition result
+    add_comment "$jira_id" "$pr_url" "$pr_title" "$merged_by" "$merged_at" "$repo_full"
+
+    mark_processed "$pr_id"
+done
+
+log "Scan complete"

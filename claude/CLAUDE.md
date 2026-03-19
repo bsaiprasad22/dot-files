@@ -13,6 +13,15 @@
 - Follow TDD approach: write a failing test first, then implement the fix
 - Verify the test fails before fixing to ensure test correctness
 - Only then make the test pass with the implementation
+- Run tests in a **venv** or **docker container** — never against system Python
+
+## Python Environment
+
+- **Always use venv** for pip installs — never install packages globally
+- If a venv already exists in the project (e.g., `venv/`, `.venv/`), activate it
+- If no venv exists, create one: `python3 -m venv .venv && source .venv/bin/activate`
+- Use `pip install` only inside an active venv or a docker container
+- When running Python scripts or tests, ensure the venv is activated first
 
 ## Dot-Files & Stow
 
@@ -45,6 +54,18 @@ npm install --legacy-peer-deps
 ```
 
 **Important:** Always use `--legacy-peer-deps` flag when running npm install for penops-ui projects.
+
+## Hobby Project Mode
+
+Activated when the user says "hobby project". Overrides work-specific defaults:
+
+- **No Jira** — skip ticket ID, status updates, session summaries, Jira ID in commits
+- **No worktrees** — work directly in the repo
+- **Remote** — push to `git@github.com:bsaiprasad22/<repo-name>.git` (origin, not a separate private remote)
+- **Commits** — plain descriptive messages (no Jira prefix, still no watermarks/co-author)
+- **Plans** — still saved to `~/.claude/plans/` for cross-session access, named `<project-name>.md` (ask user for a short name if unclear)
+
+Everything else (TDD, dot-files/stow, design principles, plan structure, architect workflow) still applies.
 
 ## MCP Server Preferences
 
@@ -92,12 +113,26 @@ When entering plan mode:
 2. Save plan to `~/.claude/plans/<JIRA-ID>.md`
 3. Reference this path when discussing the plan
 
+### Planning Phase Behavior
+
+Plan mode is **elaborate and interactive**. Treat it as a collaborative design session:
+
+- **Solicit user input at every major decision point** — don't just present a plan, discuss it
+- **For each implementation step**, cover:
+  - Detailed implementation approach (what code, where, how)
+  - Corner cases and edge cases — enumerate them explicitly
+  - Testing strategy — what tests to write, what they validate, expected inputs/outputs
+  - Validation criteria — how we know this step is done and correct
+- **Ask clarifying questions** throughout — surface ambiguities early
+- **Multiple rounds of feedback** are expected — iterate until the user is satisfied
+- **No rushing** — thoroughness in planning saves time in implementation
+
 ### Structure Requirements
 
 Every plan must include:
 1. **Problem Statement** - Clear definition of what we're solving and WHY
 2. **Design Decisions** - Each decision must cite the principle it follows
-3. **Implementation Steps** - Concrete, actionable steps
+3. **Implementation Steps** - Concrete, actionable steps with corner cases, testing, and validation for each
 4. **Trade-offs** - What we're giving up and why it's acceptable
 
 ### Design Principles to Apply
@@ -169,4 +204,27 @@ When entering plan mode, follow the **three-phase workflow** (detailed in memory
 - Premature optimization: Profile first, optimize second
 - Gold-plating: Build what's needed, not what's "cool"
 - Cargo-culting: Don't copy patterns without understanding why
+
+## Autonomous Implementation Mode
+
+Once a plan is approved and implementation begins, **execute autonomously without pausing for user input or permission**. The plan has been discussed and agreed — now just build it.
+
+### Do NOT ask the user for:
+- Permission to create/edit/delete files
+- Permission to run tests, linters, build commands
+- Permission to install dependencies (npm install, pip install, etc.)
+- Permission to run scripts that the agent itself wrote
+- Confirmation between implementation steps
+- "Should I continue?" or "Does this look good?" prompts
+
+### DO stop and ask the user before:
+- Running Dockerfiles, docker-compose files, or container commands **not created by the agent in this session**
+- Modifying database entries directly (INSERT/UPDATE/DELETE on production or shared DBs)
+- Destructive git operations (force push, reset --hard, branch -D on shared branches)
+- Deploying to any environment
+- Running commands that affect external/shared infrastructure
+- Executing scripts from untrusted or unfamiliar sources
+
+### Guiding principle:
+If the action is local, reversible, and scoped to the task — just do it. If it touches shared state, external systems, or is hard to undo — ask first.
 

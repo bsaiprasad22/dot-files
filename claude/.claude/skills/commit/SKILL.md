@@ -1,3 +1,10 @@
+---
+name: commit
+description: Generate structured git commits with Jira ticket references and conventional commit format. Use when committing staged changes, creating git commits, or preparing commit messages.
+argument-hint: "[--amend] [--scope=<scope>] [--type=<type>] [--dry-run]"
+disable-model-invocation: true
+---
+
 # Git Commit
 
 Generate brief, complete, and properly structured git commits with Jira ticket references.
@@ -15,25 +22,20 @@ Generate brief, complete, and properly structured git commits with Jira ticket r
 - `--type=<type>` - Override auto-detected type
 - `--dry-run` - Show commit message without committing
 
+## Pre-loaded Context
+
+**Current branch:** !`git branch --show-current 2>/dev/null`
+**Staged files:** !`git diff --cached --name-only 2>/dev/null`
+**Staged stats:** !`git diff --cached --stat 2>/dev/null`
+**Recent commits (style reference):** !`git log --oneline -5 2>/dev/null`
+
 ## Instructions
 
 ### 1. Gather Context
 
+Use the pre-loaded context above. If more detail is needed:
+
 ```bash
-# Get Jira ID from branch name
-JIRA_ID=$(git branch --show-current)
-
-# Validate Jira ID format
-if [[ ! "$JIRA_ID" =~ ^[A-Z]+-[0-9]+$ ]]; then
-  echo "Warning: Branch name '$JIRA_ID' is not a valid Jira ID"
-  echo "Commit will proceed without Jira reference"
-  JIRA_ID=""
-fi
-
-# Get staged changes
-git diff --cached --stat
-git diff --cached --name-only
-
 # Get detailed diff for analysis
 git diff --cached
 ```

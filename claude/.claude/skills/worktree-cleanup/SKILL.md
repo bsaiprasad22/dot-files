@@ -1,3 +1,10 @@
+---
+name: cleanup-worktrees
+description: Clean up git worktrees whose associated Jira tickets have been closed. Scans worktrees directory, checks Jira status, removes completed ones. Use when cleaning up old worktrees or reclaiming disk space.
+argument-hint: "[--dry-run] [--force] [--archive] [--keep=JIRA-ID]"
+disable-model-invocation: true
+---
+
 # Worktree Cleanup
 
 Automatically clean up git worktrees whose associated Jira tickets have been closed.
