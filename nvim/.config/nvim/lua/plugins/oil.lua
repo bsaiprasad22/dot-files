@@ -3,8 +3,8 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
         require("oil").setup({
-            -- Default file explorer to use when opening a directory
-            default_file_explorer = true,
+            -- nvim-tree handles the sidebar tree; oil is for buffer-style editing
+            default_file_explorer = false,
 
             -- Columns to display in oil buffer
             columns = {

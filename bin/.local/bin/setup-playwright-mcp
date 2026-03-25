@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Setup Playwright MCP server for Claude Code
+# Installs Chromium browser, system deps, and registers the MCP server
+set -euo pipefail
+
+echo "==> Installing Playwright Chromium browser..."
+npx -y @playwright/mcp@latest --help >/dev/null 2>&1
+npx playwright install chromium
+
+echo "==> Installing system dependencies (requires sudo)..."
+sudo env "PATH=$PATH" npx playwright install-deps chromium
+
+echo "==> Registering Playwright MCP server with Claude Code..."
+if command -v claude >/dev/null 2>&1; then
+  claude mcp add --transport stdio --scope user playwright -- npx -y @playwright/mcp@latest --headless
+  echo "==> Done. Restart Claude Code to pick up the new MCP server."
+else
+  echo "==> Claude CLI not found. Add manually:"
+  echo '    claude mcp add --transport stdio --scope user playwright -- npx -y @playwright/mcp@latest --headless'
+fi

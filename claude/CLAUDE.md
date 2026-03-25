@@ -75,8 +75,10 @@ Everything else (TDD, dot-files/stow, design principles, plan structure, archite
 ## Jira Integration
 
 - **Project key**: Always use the `INFRA` project when creating Jira tickets
+- **Assignee**: Always assign tickets to Sai Bapa (account ID: `61d0f1c2e763790068d923a0`) unless explicitly told otherwise
 - **Commit messages**: Always include the Jira ID at the start of commit messages (e.g., `INFRA-1234: Fix login validation bug`)
 - **Status updates**: Move the ticket to "In Progress" when starting work on a task
+- **Closing tickets**: When transitioning INFRA tickets to Done, also set the "Outcome" field to "Done"
 - **Session summary**: At the end of a task, post a comment to the Jira ticket via MCP that includes:
   - Overall changes made (files added/modified/deleted)
   - Solution summary explaining the approach and fix
@@ -224,6 +226,22 @@ Once a plan is approved and implementation begins, **execute autonomously withou
 - Deploying to any environment
 - Running commands that affect external/shared infrastructure
 - Executing scripts from untrusted or unfamiliar sources
+
+### Pre-Commit Code Simplification
+
+After implementation is complete and all tests pass, run `/simplify` on changed files before committing.
+
+**Accept** simplifications that:
+- Reduce unnecessary complexity, redundant logic, or verbose patterns
+- Improve readability without changing behavior
+
+**Reject** simplifications that:
+- Weaken security measures
+- Degrade performance
+- Contradict design decisions from the approved plan
+- Remove error handling at system boundaries
+
+This is distinct from the planning-phase Simplification Pass — that challenges the *design*, this challenges the *code*.
 
 ### Guiding principle:
 If the action is local, reversible, and scoped to the task — just do it. If it touches shared state, external systems, or is hard to undo — ask first.
