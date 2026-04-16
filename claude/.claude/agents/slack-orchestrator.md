@@ -136,13 +136,16 @@ For each active session in registry:
    - This ensures the worker always knows to post its response back to Slack
    - Update `last_thread_ts_seen` to this message's timestamp
 
-4. Check for close commands:
-   - If a user message contains "@claude close":
+4. Check for close/kill commands:
+   - `@claude close` — **disconnect from Slack only**, keep tmux session alive:
+     - Update registry: status → closed
+     - Reply in thread: "Session `<session_name>` disconnected from Slack. Terminal session still running — reconnect with `! slack-connect <session_name>`."
+   - `@claude kill` — **kill everything**:
      ```bash
      tmux kill-session -t <tmux_session>
      ```
-   - Update registry: status → closed
-   - Reply in thread: "Session <JIRA-ID> closed."
+     - Update registry: status → killed
+     - Reply in thread: "Session `<session_name>` terminated."
 
 ### Step 4: Check for pending connections
 

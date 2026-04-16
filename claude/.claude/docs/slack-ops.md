@@ -7,29 +7,30 @@ Slack-driven task management for Claude Code. Dispatch tasks from Slack, interac
 ```
   Slack #claude-term                    Terminal
         │                                  │
-        │  "@claude INFRA-1234 ..."        │  /slack-task INFRA-1234 ...
-        │                                  │        │
-        ▼                                  ▼        ▼
+        │  "@claude [name] ..."            │  /slack-task [name] ...
+        │                                  │  ! slack-connect
+        ▼                                  ▼
    ┌──────────────────────────────────────────────────┐
    │  ORCHESTRATOR (tmux: claude-ops)                 │
    │  Polls Slack every 60s, spawns workers,          │
-   │  routes thread replies via tmux send-keys        │
+   │  routes thread replies via tmux send-keys,       │
+   │  picks up pending connections from terminal      │
    └──────┬──────────┬──────────┬─────────────────────┘
           │          │          │
           ▼          ▼          ▼
-     INFRA-1234  INFRA-1235  INFRA-1236
+     login-fix   jira-check  INFRA-1236
      (tmux ses)  (tmux ses)  (tmux ses)
      Real Claude CLI sessions, post directly to Slack
 ```
 
-**Orchestrator**: long-running Claude session that polls `#claude-term`, spawns workers, routes replies.
+**Orchestrator**: long-running Claude session that polls `#claude-term`, spawns workers, routes replies, picks up pending connections.
 **Workers**: real Claude CLI sessions in named tmux sessions. Full context persistence. Post directly to Slack threads.
 
 ## Prerequisites
 
 - **Claude Code CLI** v2.1+ installed and authenticated
 - **Slack MCP** configured and authenticated (OAuth, plugin: `agentq/slack`)
-- **Jira MCP** configured (`pensando_jira`)
+- **Jira MCP** configured (`pensando_jira`) — optional, only needed for Jira-linked tasks
 - **tmux** installed
 - **GNU Stow** for dotfile management
 - A Slack channel for task dispatch (default: `#claude-term`, ID: `C0ASZC1A8H4`)
@@ -72,8 +73,8 @@ Must be configured in `.mcp.json` (via agentq plugin) with OAuth:
 
 ```bash
 cd ~/dot-files
-stow -R claude   # agents, skills, settings
-stow -R bin      # helper scripts
+stow -R claude   # agents, skills, settings, docs
+stow -R bin      # helper scripts (claude-ops-start, claude-ops-health, slack-connect)
 ```
 
 ### 2. Create runtime directory
@@ -133,39 +134,64 @@ Idempotent — safe to run if already running.
 ### Dispatch a task from Slack
 
 Post in `#claude-term`:
+
 ```
+@claude [login-fix] INFRA-1234 fix the login validation bug
+@claude [jira-check] check my pending jiras
 @claude INFRA-1234 fix the login validation bug
+@claude what files changed in the last commit
 ```
 
-Optional custom session name:
-```
-@claude INFRA-1234 [login-fix] fix the login validation bug
-```
+### Session naming
+
+| Message | Session name | Jira | Worktree |
+|---------|-------------|------|----------|
+| `@claude [login-fix] INFRA-1234 fix bug` | `login-fix` | INFRA-1234 | yes |
+| `@claude [jira-check] check pending jiras` | `jira-check` | none | no |
+| `@claude INFRA-1234 fix bug` | `INFRA-1234` | INFRA-1234 | yes |
+| `@claude check pending jiras` | `query-XXXXXX` | none | no |
+
+Priority: explicit `[name]` > Jira ID > auto-generated from timestamp.
 
 ### Dispatch a task from terminal
 
 ```
+/slack-task [login-fix] INFRA-1234 fix the login validation bug
+/slack-task [jira-check] check my pending jiras
 /slack-task INFRA-1234 fix the login validation bug
 ```
 
-This posts to `#claude-term` — the orchestrator picks it up on the next poll cycle.
+This posts to `#claude-term` — the orchestrator picks it up on the next poll cycle (~60s).
+
+### Connect an existing terminal session to Slack
+
+Already in a Claude session and want to continue the conversation on Slack:
+
+```
+! slack-connect                    # auto-detects tmux session name
+! slack-connect my-session-name    # explicit name
+```
+
+Runs instantly as a bash script — no interruption to your current task. The orchestrator creates a Slack thread and starts routing replies on the next poll (~60s).
 
 ### Interact with a worker
 
-**From Slack**: reply in the task's thread. The orchestrator routes your message to the worker on the next poll (~60s).
+**From Slack**: reply in the task's thread. The orchestrator routes your message to the worker on the next poll (~60s). Messages include a Slack context prefix so the worker knows to post its response back to the thread.
 
 **From terminal**: attach directly to the tmux session:
 ```bash
-tmux attach -t INFRA-1234
+tmux attach -t login-fix
 ```
 
 Both inputs work — the worker maintains full context across all interactions.
 
-### Close a session
+### Close / kill a session
 
-**From Slack**: reply `@claude close` in the thread.
-
-**From terminal**: attach to the session and type `/exit` or press `Ctrl+C`.
+| Command | What it does |
+|---------|-------------|
+| `@claude close` | Disconnect from Slack (stops polling/routing). Terminal session stays alive. Reconnect later with `! slack-connect`. |
+| `@claude kill` | Kill the tmux session entirely. Full cleanup. |
+| `/exit` or `Ctrl+C` in terminal | Ends Claude in that session. Orchestrator detects on next poll and marks closed. |
 
 ### Check status
 
@@ -191,38 +217,61 @@ tmux attach -t claude-ops
 | `claude/.claude/docs/slack-ops.md` | claude | This README |
 | `bin/.local/bin/claude-ops-start` | bin | Start script (idempotent) |
 | `bin/.local/bin/claude-ops-health` | bin | Health check for cron |
+| `bin/.local/bin/slack-connect` | bin | Connect existing session to Slack |
 
 ### Runtime (not version controlled)
 
 | File | Description |
 |------|-------------|
 | `~/.claude/slack-ops/config.json` | Channel, poll interval, keyword, project dir |
-| `~/.claude/slack-ops/registry.json` | Active session state (Jira ID → tmux + thread) |
+| `~/.claude/slack-ops/registry.json` | Active session state (session name → tmux + thread) |
 | `~/.claude/slack-ops/health.log` | Health check restart log |
+| `~/.claude/slack-ops/pending-connect-*.json` | Pending connection requests from terminal |
 
 ## How It Works
 
 ### Poll Cycle (every ~60s)
 
 1. Read `#claude-term` for new `@claude` messages
-2. For each new task: acknowledge in thread, create worktree, spawn tmux session, send initial prompt, transition Jira to "In Progress"
-3. For each active session: read thread for new user replies, route to worker via `tmux send-keys`
-4. Housekeeping: verify tmux sessions alive, update registry
+2. For each new task: acknowledge in thread, create worktree (if Jira ID), spawn tmux session, send initial prompt, transition Jira to "In Progress" (if Jira ID)
+3. For each active session: read thread for new user replies, route to worker via `tmux send-keys` with Slack context prefix
+4. Check for pending connection files (`pending-connect-*.json`) — create Slack thread and register existing terminal sessions
+5. Housekeeping: verify tmux sessions alive, update registry
 
 ### Worker Sessions
 
 - Real Claude CLI sessions with `--dangerously-skip-permissions`
-- Each gets its own git worktree under `/home/vm/worktrees/<JIRA-ID>`
+- Jira tasks get their own git worktree under `/home/vm/worktrees/<JIRA-ID>`
+- Ad-hoc queries (no Jira) run from `/home/vm` with no worktree
 - Posts directly to their Slack thread via `slack_send_message`
 - Full context retained — follow-up messages, redirections, and review iterations all work
 - Worker knows its thread_ts and channel_id from the initial prompt
 
 ### Message Routing
 
-- **Slack → Worker**: orchestrator reads thread, sends via `tmux send-keys` with Slack context prefix so worker knows to reply to thread
+- **Slack → Worker**: orchestrator reads thread, sends via `tmux send-keys` with context prefix so worker posts reply back to thread
 - **Worker → Slack**: worker calls `slack_send_message` directly with `thread_ts`
 - **Terminal → Worker**: user attaches via `tmux attach -t <session>`
+- **Terminal → Slack**: `! slack-connect` writes a pending file, orchestrator creates thread on next poll
 - **Self-message filtering**: orchestrator skips messages with "Sent using Claude" footer to avoid routing worker messages back to themselves
+
+### Registry Schema
+
+```json
+{
+  "login-fix": {
+    "thread_ts": "1776329400.274289",
+    "channel_id": "C0ASZC1A8H4",
+    "tmux_session": "login-fix",
+    "jira_id": "INFRA-1234",
+    "status": "active",
+    "task_description": "fix the login validation bug",
+    "started_at": "2026-04-16T14:20:00Z",
+    "last_thread_ts_seen": "1776330388.176039",
+    "source": "slack"
+  }
+}
+```
 
 ## Assumptions
 
@@ -233,6 +282,7 @@ tmux attach -t claude-ops
 - Worker sessions persist until explicitly closed — no auto-timeout
 - No concurrency limits — machine resources are the natural constraint
 - The orchestrator runs in `~/.claude/slack-ops` as its working directory
+- Workers started from `/home/vm` to avoid repeated workspace trust prompts
 
 ## Known Limitations
 
@@ -241,6 +291,7 @@ tmux attach -t claude-ops
 3. **Orchestrator context pressure**: the orchestrator accumulates history over time. May need periodic restart for long-running deployments.
 4. **First-run trust prompt**: workspace trust dialog appears once per new directory. Cached after first approval.
 5. **Slack message limit**: messages over 4000 chars get truncated. Long worker outputs may need splitting.
+6. **Multi-line prompt delivery**: long initial prompts sent via `tmux send-keys` may trigger Claude's paste protection. Orchestrator uses temp files + `cat` to mitigate.
 
 ## Troubleshooting
 
@@ -250,14 +301,24 @@ tmux attach -t claude-ops
 - Verify Slack MCP is authenticated: try `slack_read_channel` manually
 
 **Worker not responding**:
-- Check tmux session: `tmux has-session -t INFRA-1234`
-- Attach and check: `tmux attach -t INFRA-1234`
+- Check tmux session: `tmux has-session -t login-fix`
+- Attach and check: `tmux attach -t login-fix`
 - Check registry: `cat ~/.claude/slack-ops/registry.json`
+
+**Worker not posting back to Slack**:
+- The orchestrator prefixes routed messages with `[Slack thread message - post your reply...]` context
+- If the worker was started before this fix, it may not know to post back
+- Resend a message from Slack — the new routing includes the context
 
 **Permission prompts appearing**:
 - Ensure `skipDangerousModePermissionPrompt: true` in settings.json
 - Ensure `Bash(tmux *)` and `mcp__plugin_agentq_slack__*` are in the allow list
 - The orchestrator uses Bash (not Write tool) for registry updates to avoid file write prompts
+
+**slack-connect not working**:
+- Must be run from inside a tmux session (or pass session name explicitly)
+- Check pending file: `ls ~/.claude/slack-ops/pending-connect-*.json`
+- Orchestrator picks it up on next poll (~60s)
 
 **Health check not restarting**:
 - Verify cron: `crontab -l | grep claude-ops`
