@@ -165,14 +165,17 @@ This posts to `#claude-term` — the orchestrator picks it up on the next poll c
 
 ### Connect an existing terminal session to Slack
 
-Already in a Claude session and want to continue the conversation on Slack:
-
+**From terminal** (instant, no interruption):
 ```
 ! slack-connect                    # auto-detects tmux session name
 ! slack-connect my-session-name    # explicit name
 ```
 
-Runs instantly as a bash script — no interruption to your current task. The orchestrator creates a Slack thread and starts routing replies on the next poll (~60s).
+**From Slack** (if you know the tmux session name):
+```
+@claude [jira_scrub] connect to this session
+```
+If a tmux session named `jira_scrub` already exists, the orchestrator connects to it instead of spawning a new one. No new Claude process, no worktree — just starts routing thread replies to the existing session.
 
 ### Interact with a worker
 

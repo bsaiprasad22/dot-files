@@ -51,13 +51,30 @@ For each message:
 **No Jira ID?** No worktree is created — the worker runs from `/home/vm`.
 Jira auto-transition is skipped. Everything else (tmux session, thread routing, registry) works the same.
 
-### Step 2: Spawn new sessions
+### Step 2: Spawn or connect sessions
 
 For each new task found:
 
+**First, check if a tmux session with the session name already exists:**
+```bash
+tmux has-session -t <session_name> 2>/dev/null
+```
+
+**If the session already exists** — connect to it (don't spawn a new one):
+1. Reply in thread: "Connected to existing session `<session_name>`."
+2. Register in registry (same schema as below)
+3. Send Slack context to the session:
+   ```bash
+   tmux send-keys -t <session_name> "[Connected to Slack thread. Post updates using: slack_send_message(channel_id=\"<channel_id>\", message=\"<update>\", thread_ts=\"<thread_ts>\")]" Enter
+   ```
+4. Skip worktree creation, Claude spawning, and Jira transition
+5. Proceed to registry write
+
+**If the session does NOT exist** — spawn a new one:
+
 1. Reply in thread to acknowledge:
    ```
-   slack_send_message(channel_id, message="Starting <JIRA-ID> — spawning session...", thread_ts=<message_ts>)
+   slack_send_message(channel_id, message="Starting <session_name> — spawning session...", thread_ts=<message_ts>)
    ```
 
 2. Register in registry.json (keyed by session name):
