@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Health check for the slack-ops orchestrator.
+# Restarts if the tmux session is dead.
+# Intended for cron: */5 * * * * /home/vm/.local/bin/claude-ops-health
+
+set -euo pipefail
+
+SESSION_NAME="claude-ops"
+WORK_DIR="$HOME/.claude/slack-ops"
+LOG_FILE="$WORK_DIR/health.log"
+
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    exit 0
+fi
+
+# Session is dead — restart
+mkdir -p "$WORK_DIR"
+echo "$(date -Iseconds) — Orchestrator not found, restarting..." >> "$LOG_FILE"
+
+tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
+  "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
+
+sleep 8
+tmux send-keys -t "$SESSION_NAME" \
+  "Start polling. Read config.json and registry.json in the current directory, then begin the poll cycle as described in your agent instructions." Enter
+
+echo "$(date -Iseconds) — Orchestrator restarted." >> "$LOG_FILE"
+
+# Rotate log if > 1MB
+if [[ -f "$LOG_FILE" ]] && [[ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null) -gt 1048576 ]]; then
+    mv "$LOG_FILE" "${LOG_FILE}.old"
+fi
