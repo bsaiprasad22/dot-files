@@ -133,13 +133,14 @@ Idempotent — safe to run if already running.
 
 ### Dispatch a task from Slack
 
-Post in `#claude-term`:
+Post in `#claude-term` (case-insensitive — `@claude`, `@Claude`, `@CLAUDE` all work):
 
 ```
 @claude [login-fix] INFRA-1234 fix the login validation bug
-@claude [jira-check] check my pending jiras
+@Claude [jira-check] check my pending jiras
 @claude INFRA-1234 fix the login validation bug
-@claude what files changed in the last commit
+@Claude what files changed in the last commit
+@claude list
 ```
 
 ### Session naming
@@ -294,10 +295,11 @@ tmux attach -t claude-ops    # attach to orchestrator
 
 1. **No push notifications**: Slack MCP posts as your account, so you don't get mobile notifications for worker responses. Workaround: set up a Slack incoming webhook for a different sender identity.
 2. **~60s latency**: polling-based, not real-time. Thread replies take up to 60s to reach the worker.
-3. **Orchestrator context pressure**: the orchestrator accumulates history over time. May need periodic restart for long-running deployments.
+3. **Orchestrator auto-restart**: the orchestrator exits after ~50 poll cycles to clear context. The health check cron restarts it within 5 minutes. Registry persists — no state loss.
 4. **First-run trust prompt**: workspace trust dialog appears once per new directory. Cached after first approval.
 5. **Slack message limit**: messages over 4000 chars get truncated. Long worker outputs may need splitting.
 6. **Multi-line prompt delivery**: long initial prompts sent via `tmux send-keys` may trigger Claude's paste protection. Orchestrator uses temp files + `cat` to mitigate.
+7. **Channel growth**: the orchestrator tracks `last_channel_ts` to only process new messages. Old messages are never re-read regardless of channel size.
 
 ## Troubleshooting
 

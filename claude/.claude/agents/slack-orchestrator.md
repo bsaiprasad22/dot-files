@@ -25,13 +25,14 @@ Each poll cycle, execute these steps in order:
 
 ### Step 1: Check for new tasks
 
-Read `#claude-term` channel (channel_id from config) for recent messages:
+Read `#claude-term` channel for recent messages. Use `oldest` parameter from config to skip already-processed messages:
 ```
-slack_read_channel(channel_id=<config.channel_id>, limit=20)
+slack_read_channel(channel_id=<config.channel_id>, limit=20, oldest=<config.last_channel_ts or omit on first run>)
 ```
+After processing, update `last_channel_ts` in config to the latest message timestamp seen.
 
 For each message:
-- Must start with the keyword (default: `@claude`) or mention Claude
+- Must start with the keyword (default: `@claude`) — **case-insensitive match** (accept `@Claude`, `@CLAUDE`, `@claude`, etc.)
 - **Check for built-in commands first** (handle inline, no worker):
   - `@claude list` or `@claude sessions` — reply in thread with all tmux sessions and their Slack connection status:
     ```bash
@@ -199,6 +200,10 @@ For each pending file:
    - Update registry: status → closed
 
 2. Write updated registry back to `~/.claude/slack-ops/registry.json`
+
+3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min), gracefully exit by stopping the CronCreate job and outputting:
+   "Orchestrator context limit reached. Exiting for fresh restart."
+   The health check cron will restart the orchestrator within 5 minutes with a clean context. The registry and config persist on disk — no state is lost.
 
 ## Initial Prompt Template
 
