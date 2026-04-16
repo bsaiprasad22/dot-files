@@ -161,16 +161,22 @@ For each active session in registry:
    - This ensures the worker always knows to post its response back to Slack
    - Update `last_thread_ts_seen` to this message's timestamp
 
-4. Check for close/kill commands:
-   - `@claude close` — **disconnect from Slack only**, keep tmux session alive:
+4. Check for close/kill commands (case-insensitive match):
+   - `@Claude close` — **disconnect from Slack only**, keep tmux session alive:
      - Update registry: status → closed
      - Reply in thread: "Session `<session_name>` disconnected from Slack. Terminal session still running — reconnect with `! slack-connect <session_name>`."
-   - `@claude kill` — **kill everything**:
+   - `@Claude kill` — **kill everything and clean up**:
      ```bash
+     # Kill the tmux session
      tmux kill-session -t <tmux_session>
+     # Remove temp files
+     rm -f /tmp/slack-prompt-<session_name>.txt /tmp/slack-input-<session_name>.txt
+     # Remove worktree if it exists (only for Jira-linked sessions)
+     cd <config.default_project_dir> && git worktree remove /home/vm/worktrees/<jira_id> --force 2>/dev/null
+     git branch -D <jira_id> 2>/dev/null
      ```
-     - Update registry: status → killed
-     - Reply in thread: "Session `<session_name>` terminated."
+     - Remove the entry from registry entirely (not just status change)
+     - Reply in thread: "Session `<session_name>` terminated. Cleaned up: tmux session, temp files, worktree."
 
 ### Step 4: Check for pending connections
 

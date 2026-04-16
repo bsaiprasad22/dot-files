@@ -193,8 +193,8 @@ Both inputs work — the worker maintains full context across all interactions.
 
 | Command | What it does |
 |---------|-------------|
-| `@claude close` | Disconnect from Slack (stops polling/routing). Terminal session stays alive. Reconnect later with `! slack-connect`. |
-| `@claude kill` | Kill the tmux session entirely. Full cleanup. |
+| `@Claude close` | Disconnect from Slack (stops polling/routing). Terminal session stays alive. Reconnect later with `! slack-connect`. |
+| `@Claude kill` | Kill tmux session, delete temp files, remove worktree and branch. Full cleanup. |
 | `/exit` or `Ctrl+C` in terminal | Ends Claude in that session. Orchestrator detects on next poll and marks closed. |
 
 ### List sessions
