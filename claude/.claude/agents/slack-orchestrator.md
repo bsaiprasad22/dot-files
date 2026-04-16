@@ -32,6 +32,13 @@ slack_read_channel(channel_id=<config.channel_id>, limit=20)
 
 For each message:
 - Must start with the keyword (default: `@claude`) or mention Claude
+- **Check for built-in commands first** (handle inline, no worker):
+  - `@claude list` or `@claude sessions` — reply in thread with all tmux sessions and their Slack connection status:
+    ```bash
+    tmux list-sessions -F "#{session_name} (created #{session_created}, #{?session_attached,attached,detached})" 2>/dev/null
+    ```
+    Cross-reference with registry to show which are connected to Slack. Format as a table and post to thread. Skip `claude-ops` (the orchestrator itself).
+  - If a built-in command is matched, handle it and move to the next message (do not spawn a worker).
 - Extract session name: text in `[brackets]` (e.g., `[login-fix]`) — optional
 - Extract Jira ID: token matching pattern `[A-Z]+-[0-9]+` — optional
 - Extract task description: remaining text after name and/or Jira ID

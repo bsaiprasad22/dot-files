@@ -196,17 +196,20 @@ Both inputs work — the worker maintains full context across all interactions.
 | `@claude kill` | Kill the tmux session entirely. Full cleanup. |
 | `/exit` or `Ctrl+C` in terminal | Ends Claude in that session. Orchestrator detects on next poll and marks closed. |
 
-### Check status
+### List sessions
 
+**From Slack**:
+```
+@claude list
+@claude sessions
+```
+Orchestrator replies with all tmux sessions and their Slack connection status.
+
+**From terminal**:
 ```bash
-# List all tmux sessions
-tmux list-sessions
-
-# View registry
-cat ~/.claude/slack-ops/registry.json
-
-# Attach to orchestrator
-tmux attach -t claude-ops
+tmux list-sessions           # all tmux sessions
+cat ~/.claude/slack-ops/registry.json   # Slack-connected sessions
+tmux attach -t claude-ops    # attach to orchestrator
 ```
 
 ## Files
