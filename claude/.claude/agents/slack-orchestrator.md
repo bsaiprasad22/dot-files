@@ -104,9 +104,8 @@ tmux has-session -t <session_name> 2>/dev/null
 
 3. Create worktree (if Jira ID present) and spawn tmux session:
    ```bash
-   # WITH Jira ID: create worktree
-   cd <config.default_project_dir>
-   git worktree add /home/vm/worktrees/<JIRA-ID> -b <JIRA-ID> main
+   # WITH Jira ID: create worktree (use git -C to avoid changing CWD)
+   git -C <config.default_project_dir> worktree add /home/vm/worktrees/<JIRA-ID> -b <JIRA-ID> main
    tmux new-session -d -s <session_name> -c /home/vm/worktrees/<JIRA-ID>
 
    # WITHOUT Jira ID (ad-hoc query): no worktree, run from /home/vm
@@ -115,6 +114,8 @@ tmux has-session -t <session_name> 2>/dev/null
    # Then in both cases:
    tmux send-keys -t <session_name> 'claude --dangerously-skip-permissions' Enter
    ```
+   IMPORTANT: Never use `cd` in Bash commands — it changes the orchestrator's
+   working directory permanently. Always use absolute paths or `git -C`.
 
 4. Wait 10 seconds for Claude to fully start, then send initial prompt.
    CRITICAL: Write the prompt to a temp file first, then use `cat` to pipe it.
@@ -171,9 +172,9 @@ For each active session in registry:
      tmux kill-session -t <tmux_session>
      # Remove temp files
      rm -f /tmp/slack-prompt-<session_name>.txt /tmp/slack-input-<session_name>.txt
-     # Remove worktree if it exists (only for Jira-linked sessions)
-     cd <config.default_project_dir> && git worktree remove /home/vm/worktrees/<jira_id> --force 2>/dev/null
-     git branch -D <jira_id> 2>/dev/null
+     # Remove worktree if it exists (only for Jira-linked sessions — use git -C, never cd)
+     git -C <config.default_project_dir> worktree remove /home/vm/worktrees/<jira_id> --force 2>/dev/null
+     git -C <config.default_project_dir> branch -D <jira_id> 2>/dev/null
      ```
      - Remove the entry from registry entirely (not just status change)
      - Reply in thread: "Session `<session_name>` terminated. Cleaned up: tmux session, temp files, worktree."
