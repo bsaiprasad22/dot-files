@@ -32,13 +32,23 @@ slack_read_channel(channel_id=<config.channel_id>, limit=20)
 
 For each message:
 - Must start with the keyword (default: `@claude`) or mention Claude
-- Extract Jira ID: first token matching pattern `[A-Z]+-[0-9]+` (may be absent)
-- Extract optional session name: text in `[brackets]` after Jira ID
-- Extract task description: remaining text after Jira ID and optional name
-- Skip if Jira ID or session key already exists in registry
+- Extract session name: text in `[brackets]` (e.g., `[login-fix]`) — optional
+- Extract Jira ID: token matching pattern `[A-Z]+-[0-9]+` — optional
+- Extract task description: remaining text after name and/or Jira ID
+- Skip if session key already exists in registry
 
-**No Jira ID?** Generate a session key from the message timestamp: `query-<last6digits>`.
-No worktree is created for these — the worker runs from `/home/vm` instead.
+**Session name resolution** (in priority order):
+1. Explicit `[name]` in brackets → use as session name
+2. No `[name]` but Jira ID present → use Jira ID as session name
+3. Neither → generate `query-<last6digits>` from message timestamp
+
+**Examples:**
+- `@claude [login-fix] INFRA-1234 fix the bug` → session: `login-fix`, Jira: `INFRA-1234`
+- `@claude [jira-check] check pending jiras` → session: `jira-check`, no Jira
+- `@claude INFRA-1234 fix the bug` → session: `INFRA-1234`, Jira: `INFRA-1234`
+- `@claude check pending jiras` → session: `query-921789`, no Jira
+
+**No Jira ID?** No worktree is created — the worker runs from `/home/vm`.
 Jira auto-transition is skipped. Everything else (tmux session, thread routing, registry) works the same.
 
 ### Step 2: Spawn new sessions
@@ -50,13 +60,14 @@ For each new task found:
    slack_send_message(channel_id, message="Starting <JIRA-ID> — spawning session...", thread_ts=<message_ts>)
    ```
 
-2. Register in registry.json:
+2. Register in registry.json (keyed by session name):
    ```json
    {
-     "<JIRA-ID>": {
+     "<session_name>": {
        "thread_ts": "<message_ts>",
        "channel_id": "<config.channel_id>",
-       "tmux_session": "<session_name or JIRA-ID>",
+       "tmux_session": "<session_name>",
+       "jira_id": "<JIRA-ID or null>",
        "status": "active",
        "task_description": "<description>",
        "started_at": "<ISO timestamp>",
