@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Connect the current tmux/Claude session to a Slack thread in #claude-term.
+# Usage: slack-connect [session-name]
+#   If no session name given, detects from current tmux session.
+#   Run from inside a Claude session with: ! slack-connect
+
+set -euo pipefail
+
+CHANNEL_ID="C0ASZC1A8H4"
+REGISTRY="$HOME/.claude/slack-ops/registry.json"
+
+# Detect tmux session name
+if [[ -n "${1:-}" ]]; then
+    SESSION_NAME="$1"
+elif [[ -n "${TMUX:-}" ]]; then
+    SESSION_NAME=$(tmux display-message -p '#S')
+else
+    echo "Error: not in a tmux session and no session name provided."
+    echo "Usage: slack-connect [session-name]"
+    exit 1
+fi
+
+# Check if already connected
+if [[ -f "$REGISTRY" ]] && python3 -c "import json,sys; d=json.load(open('$REGISTRY')); sys.exit(0 if '$SESSION_NAME' in [v.get('tmux_session') for v in d.values()] else 1)" 2>/dev/null; then
+    echo "Session '$SESSION_NAME' is already connected to Slack."
+    THREAD_TS=$(python3 -c "import json; d=json.load(open('$REGISTRY')); print([v['thread_ts'] for v in d.values() if v.get('tmux_session')=='$SESSION_NAME'][0])")
+    echo "Thread: https://pensandoteam.slack.com/archives/$CHANNEL_ID/p${THREAD_TS//./}"
+    exit 0
+fi
+
+# Get git branch for context
+BRANCH=$(git branch --show-current 2>/dev/null || echo "none")
+CWD=$(pwd)
+SHORT_CWD="${CWD/#$HOME/~}"
+
+# Write a pending connection file — the orchestrator picks this up
+PENDING_FILE="$HOME/.claude/slack-ops/pending-connect-${SESSION_NAME}.json"
+cat > "$PENDING_FILE" << EOF
+{
+  "tmux_session": "$SESSION_NAME",
+  "branch": "$BRANCH",
+  "cwd": "$SHORT_CWD",
+  "requested_at": "$(date -Iseconds)"
+}
+EOF
+
+echo "Connection request created for session '$SESSION_NAME'."
+echo "The orchestrator will create a Slack thread on the next poll (~60s)."
+echo "Pending file: $PENDING_FILE"

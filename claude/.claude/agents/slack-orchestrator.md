@@ -31,11 +31,15 @@ slack_read_channel(channel_id=<config.channel_id>, limit=20)
 ```
 
 For each message:
-- Must start with the keyword (default: `@claude`)
-- Extract Jira ID: first token matching pattern `[A-Z]+-[0-9]+`
+- Must start with the keyword (default: `@claude`) or mention Claude
+- Extract Jira ID: first token matching pattern `[A-Z]+-[0-9]+` (may be absent)
 - Extract optional session name: text in `[brackets]` after Jira ID
 - Extract task description: remaining text after Jira ID and optional name
-- Skip if Jira ID already exists in registry
+- Skip if Jira ID or session key already exists in registry
+
+**No Jira ID?** Generate a session key from the message timestamp: `query-<last6digits>`.
+No worktree is created for these — the worker runs from `/home/vm` instead.
+Jira auto-transition is skipped. Everything else (tmux session, thread routing, registry) works the same.
 
 ### Step 2: Spawn new sessions
 
@@ -62,14 +66,17 @@ For each new task found:
    }
    ```
 
-3. Create worktree and spawn tmux session:
+3. Create worktree (if Jira ID present) and spawn tmux session:
    ```bash
-   # Create worktree (skip if it already exists)
+   # WITH Jira ID: create worktree
    cd <config.default_project_dir>
    git worktree add /home/vm/worktrees/<JIRA-ID> -b <JIRA-ID> main
-
-   # Spawn tmux session — start shell first, then launch claude inside it
    tmux new-session -d -s <session_name> -c /home/vm/worktrees/<JIRA-ID>
+
+   # WITHOUT Jira ID (ad-hoc query): no worktree, run from /home/vm
+   tmux new-session -d -s <session_name> -c /home/vm
+
+   # Then in both cases:
    tmux send-keys -t <session_name> 'claude --dangerously-skip-permissions' Enter
    ```
 
@@ -126,7 +133,25 @@ For each active session in registry:
    - Update registry: status → closed
    - Reply in thread: "Session <JIRA-ID> closed."
 
-### Step 4: Housekeeping
+### Step 4: Check for pending connections
+
+Check for `pending-connect-*.json` files in `~/.claude/slack-ops/`:
+```bash
+ls ~/.claude/slack-ops/pending-connect-*.json 2>/dev/null
+```
+
+For each pending file:
+1. Read the file to get `tmux_session`, `branch`, `cwd`
+2. Verify the tmux session exists: `tmux has-session -t <tmux_session>`
+3. Post to `#claude-term`: "Connected session `<tmux_session>` (branch: `<branch>`, dir: `<cwd>`)"
+4. Register in registry using the message_ts as thread_ts, session key = tmux_session
+5. Send the Slack context to the worker via tmux send-keys:
+   ```bash
+   tmux send-keys -t <tmux_session> "[Connected to Slack thread. Post updates using: slack_send_message(channel_id=\"<channel_id>\", message=\"<update>\", thread_ts=\"<thread_ts>\")]" Enter
+   ```
+6. Delete the pending file: `rm <pending_file>`
+
+### Step 5: Housekeeping
 
 1. For each active session, verify tmux session exists:
    ```bash
