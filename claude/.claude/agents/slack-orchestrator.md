@@ -208,9 +208,16 @@ For each pending file:
 
 2. Write updated registry back to `~/.claude/slack-ops/registry.json`
 
-3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min), gracefully exit by stopping the CronCreate job and outputting:
-   "Orchestrator context limit reached. Exiting for fresh restart."
-   The health check cron will restart the orchestrator within 5 minutes with a clean context. The registry and config persist on disk — no state is lost.
+3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min):
+   a. Stop the CronCreate job
+   b. Write the registry one final time
+   c. **Exit the process** by running:
+      ```bash
+      tmux kill-session -t claude-ops
+      ```
+      This kills the orchestrator's own tmux session, which causes Claude to exit.
+      The health check cron will restart it within 5 minutes with a clean context.
+      The registry and config persist on disk — no state is lost.
 
 ## Initial Prompt Template
 
