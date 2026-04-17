@@ -17,8 +17,9 @@ fi
 mkdir -p "$WORK_DIR"
 echo "$(date -Iseconds) — Orchestrator not found, restarting..." >> "$LOG_FILE"
 
+CLAUDE_BIN="$HOME/.local/bin/claude"
 tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
-  "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
+  "$CLAUDE_BIN --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
 
 # Wait for Claude to fully start (check for INSERT mode in status line)
 for i in $(seq 1 20); do
