@@ -21,8 +21,9 @@ tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
   "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
 
 sleep 8
-tmux send-keys -t "$SESSION_NAME" \
-  "Start polling. Read config.json and registry.json in the current directory, then begin the poll cycle as described in your agent instructions." Enter
+tmux send-keys -t "$SESSION_NAME" "Start polling now." Enter
+sleep 1
+tmux send-keys -t "$SESSION_NAME" Enter
 
 echo "$(date -Iseconds) — Orchestrator restarted." >> "$LOG_FILE"
 
