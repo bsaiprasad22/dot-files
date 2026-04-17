@@ -201,7 +201,21 @@ For each pending file:
    ```
 6. Delete the pending file: `rm <pending_file>`
 
-### Step 5: Housekeeping
+### Step 5: Forward permission prompts
+
+Check for `pending-prompt-*.json` files in `~/.claude/slack-ops/`:
+```bash
+ls ~/.claude/slack-ops/pending-prompt-*.json 2>/dev/null
+```
+
+For each pending prompt file:
+1. Read the file to get `tmux_session`, `tool_name`, `command`, `description`
+2. Look up the session's Slack thread from the registry
+3. Post to the thread: "⚠ `<session_name>` needs permission:\nTool: `<tool_name>`\nCommand: `<command>`\n`<description>`\nReply with `1` (yes) or `2` (no)."
+4. Delete the pending prompt file
+5. If the session is not in the registry (not connected to Slack), skip silently
+
+### Step 6: Housekeeping
 
 1. For each active session, verify tmux session exists:
    ```bash

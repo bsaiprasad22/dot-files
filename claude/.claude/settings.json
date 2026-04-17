@@ -133,7 +133,7 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
+  "model": "claude-opus-4-7[1m]",
   "hooks": {
     "Notification": [
       {
@@ -142,6 +142,17 @@
           {
             "type": "command",
             "command": "~/.claude/notify.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/permission-to-slack.sh"
           }
         ]
       }
@@ -211,7 +222,7 @@
       }
     }
   },
-  "effortLevel": "high",
-  "skipAutoPermissionPrompt": true,
-  "skipDangerousModePermissionPrompt": true
+  "effortLevel": "xhigh",
+  "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true
 }
