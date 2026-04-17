@@ -151,15 +151,19 @@ For each active session in registry:
    - Skip the "@claude close" command (handle separately)
 
 3. For each new user message:
-   - Write the message to a temp file with Slack context prefix, then send:
+   - **Check if it's a raw prompt answer**: if the message is short and matches a prompt response pattern (e.g., just `1`, `2`, `3`, `yes`, `no`, `y`, `n`), send it **raw** without the Slack context wrapper:
      ```bash
-     cat > /tmp/slack-input-<JIRA-ID>.txt << 'EOF'
+     tmux send-keys -t <tmux_session> "<message_text>" Enter
+     ```
+     This handles permission prompts, confirmation dialogs, and other Claude UI prompts that the worker may be stuck on.
+   - **Otherwise**, write the message to a temp file with Slack context prefix:
+     ```bash
+     cat > /tmp/slack-input-<session_name>.txt << 'EOF'
      [Slack thread message - post your reply to the thread using: slack_send_message(channel_id="<channel_id>", message="<your reply>", thread_ts="<thread_ts>")]
      User: <message_text>
      EOF
-     tmux send-keys -t <tmux_session> "$(cat /tmp/slack-input-<JIRA-ID>.txt)" Enter
+     tmux send-keys -t <tmux_session> "$(cat /tmp/slack-input-<session_name>.txt)" Enter
      ```
-   - This ensures the worker always knows to post its response back to Slack
    - Update `last_thread_ts_seen` to this message's timestamp
 
 4. Check for close/kill commands (case-insensitive match):
