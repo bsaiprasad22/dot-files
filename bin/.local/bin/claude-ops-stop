@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Stop the slack-ops orchestrator and disable auto-restart.
+# Workers keep running — only the orchestrator (polling/routing) stops.
+
+set -euo pipefail
+
+SESSION_NAME="claude-ops"
+
+# Kill orchestrator
+if tmux kill-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "Orchestrator stopped."
+else
+    echo "Orchestrator was not running."
+fi
+
+# Disable health check cron so it doesn't auto-restart
+if crontab -l 2>/dev/null | grep -q "claude-ops-health"; then
+    crontab -l 2>/dev/null | grep -v "claude-ops-health" | crontab -
+    echo "Health check cron disabled."
+else
+    echo "Health check cron was already disabled."
+fi
+
+echo "Slack-ops is stopped. Workers are still running."
+echo "Restart with: claude-ops-start"

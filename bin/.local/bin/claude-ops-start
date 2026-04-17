@@ -24,5 +24,12 @@ sleep 8
 tmux send-keys -t "$SESSION_NAME" \
   "Start polling. Read config.json and registry.json in the current directory, then begin the poll cycle as described in your agent instructions." Enter
 
+# Ensure health check cron is active
+if ! crontab -l 2>/dev/null | grep -q "claude-ops-health"; then
+    (crontab -l 2>/dev/null; echo "*/5 * * * * /home/vm/.local/bin/claude-ops-health") | crontab -
+    echo "Health check cron enabled."
+fi
+
 echo "Orchestrator started in tmux session '$SESSION_NAME'."
 echo "Attach with: tmux attach -t $SESSION_NAME"
+echo "Stop with: claude-ops-stop"
