@@ -20,12 +20,19 @@ echo "$(date -Iseconds) — Orchestrator not found, restarting..." >> "$LOG_FILE
 tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
   "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
 
-sleep 8
-tmux send-keys -t "$SESSION_NAME" "Start polling now." Enter
-sleep 1
-tmux send-keys -t "$SESSION_NAME" Enter
+# Wait for Claude to fully start (check for INSERT mode in status line)
+for i in $(seq 1 20); do
+    sleep 3
+    if tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q "INSERT"; then
+        tmux send-keys -t "$SESSION_NAME" "Start polling now." Enter
+        sleep 1
+        tmux send-keys -t "$SESSION_NAME" Enter
+        echo "$(date -Iseconds) — Orchestrator restarted." >> "$LOG_FILE"
+        exit 0
+    fi
+done
 
-echo "$(date -Iseconds) — Orchestrator restarted." >> "$LOG_FILE"
+echo "$(date -Iseconds) — Orchestrator failed to start within 60s." >> "$LOG_FILE"
 
 # Rotate log if > 1MB
 if [[ -f "$LOG_FILE" ]] && [[ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null) -gt 1048576 ]]; then
