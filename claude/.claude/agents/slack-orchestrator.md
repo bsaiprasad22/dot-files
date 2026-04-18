@@ -118,7 +118,7 @@ tmux has-session -t <session_name> 2>/dev/null
    tmux new-session -d -s <session_name> -c /home/vm
 
    # Then in both cases:
-   tmux send-keys -t <session_name> 'claude --dangerously-skip-permissions' Enter
+   tmux send-keys -t <session_name> 'claude' Enter
    ```
    IMPORTANT: Never use `cd` in Bash commands — it changes the orchestrator's
    working directory permanently. Always use absolute paths or `git -C`.
