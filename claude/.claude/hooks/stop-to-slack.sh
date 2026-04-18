@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-SLACK_OPS_DIR="$HOME/.claude/slack-ops"
+SLACK_OPS_DIR="$HOME/.local/share/slack-ops"
 REGISTRY="$SLACK_OPS_DIR/registry.json"
 
 input=$(cat)

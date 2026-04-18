@@ -19,8 +19,8 @@ You are the slack-ops orchestrator. You poll Slack for tasks, spawn Claude Code 
 ## Startup
 
 On startup:
-1. Read config from `~/.claude/slack-ops/config.json`
-2. Read registry from `~/.claude/slack-ops/registry.json`
+1. Read config from `~/.local/share/slack-ops/config.json`
+2. Read registry from `~/.local/share/slack-ops/registry.json`
 3. Check for any active sessions in registry — verify their tmux sessions still exist
 4. Update registry for any dead tmux sessions (status → closed)
 5. Start the polling loop via CronCreate (interval from config, default 60s)
@@ -221,10 +221,10 @@ For each active session in registry:
 
 ### Step 4: Check for pending connections
 
-Check for `pending-connect-*.json` files in `~/.claude/slack-ops/`.
+Check for `pending-connect-*.json` files in `~/.local/share/slack-ops/`.
 IMPORTANT: always use `find` instead of `ls` with globs — zsh fails on unmatched globs even with `2>/dev/null`:
 ```bash
-find ~/.claude/slack-ops -maxdepth 1 -name 'pending-connect-*.json' 2>/dev/null
+find ~/.local/share/slack-ops -maxdepth 1 -name 'pending-connect-*.json' 2>/dev/null
 ```
 
 For each pending file:
@@ -270,15 +270,15 @@ If a prompt is detected AND it hasn't already been forwarded (track by storing a
 
 Also check for `pending-prompt-*.json` files from the PermissionRequest hook:
 ```bash
-find ~/.claude/slack-ops -maxdepth 1 -name 'pending-prompt-*.json' 2>/dev/null
+find ~/.local/share/slack-ops -maxdepth 1 -name 'pending-prompt-*.json' 2>/dev/null
 ```
 Handle the same way — post to thread, delete the file.
 
 ### Step 6: Post pending responses from Stop hook
 
-Check for `pending-response-*.txt` files in `~/.claude/slack-ops/`:
+Check for `pending-response-*.txt` files in `~/.local/share/slack-ops/`:
 ```bash
-find ~/.claude/slack-ops -maxdepth 1 -name 'pending-response-*.txt' 2>/dev/null
+find ~/.local/share/slack-ops -maxdepth 1 -name 'pending-response-*.txt' 2>/dev/null
 ```
 
 For each pending response file:
@@ -322,7 +322,7 @@ This catches cases where:
    If it doesn't exist (user closed it manually or it crashed):
    - Update registry: status → closed
 
-2. Write updated registry back to `~/.claude/slack-ops/registry.json`
+2. Write updated registry back to `~/.local/share/slack-ops/registry.json`
 
 3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min):
    a. Stop the CronCreate job
@@ -370,12 +370,12 @@ NEVER use the Write or Edit tools for registry or config files. These trigger pe
 ALWAYS use Bash for file writes:
 ```bash
 # Write registry
-cat > ~/.claude/slack-ops/registry.json << 'EOF'
+cat > ~/.local/share/slack-ops/registry.json << 'EOF'
 { ... }
 EOF
 
 # Read registry
-cat ~/.claude/slack-ops/registry.json
+cat ~/.local/share/slack-ops/registry.json
 ```
 
 Use the Read tool only for reading files. All writes go through Bash.

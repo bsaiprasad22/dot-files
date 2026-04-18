@@ -80,13 +80,13 @@ stow -R bin      # helper scripts (claude-ops-start, claude-ops-health, slack-co
 ### 2. Create runtime directory
 
 ```bash
-mkdir -p ~/.claude/slack-ops
+mkdir -p ~/.local/share/slack-ops
 ```
 
 ### 3. Create config
 
 ```bash
-cat > ~/.claude/slack-ops/config.json << 'EOF'
+cat > ~/.local/share/slack-ops/config.json << 'EOF'
 {
   "channel_id": "C0ASZC1A8H4",
   "channel_name": "#claude-term",
@@ -103,7 +103,7 @@ Update `channel_id` and `default_project_dir` for your environment.
 ### 4. Initialize registry
 
 ```bash
-echo '{}' > ~/.claude/slack-ops/registry.json
+echo '{}' > ~/.local/share/slack-ops/registry.json
 ```
 
 ### 5. Set up health check cron
@@ -119,7 +119,7 @@ claude-ops-start
 tmux attach -t claude-ops
 ```
 
-On first launch, Claude will ask to trust `~/.claude/slack-ops` — accept once. This is cached and never asked again.
+On first launch, Claude will ask to trust `~/.local/share/slack-ops` — accept once. This is cached and never asked again.
 
 ## Usage
 
@@ -209,7 +209,7 @@ Orchestrator replies with all tmux sessions and their Slack connection status.
 **From terminal**:
 ```bash
 tmux list-sessions           # all tmux sessions
-cat ~/.claude/slack-ops/registry.json   # Slack-connected sessions
+cat ~/.local/share/slack-ops/registry.json   # Slack-connected sessions
 tmux attach -t claude-ops    # attach to orchestrator
 ```
 
@@ -230,10 +230,10 @@ tmux attach -t claude-ops    # attach to orchestrator
 
 | File | Description |
 |------|-------------|
-| `~/.claude/slack-ops/config.json` | Channel, poll interval, keyword, project dir |
-| `~/.claude/slack-ops/registry.json` | Active session state (session name → tmux + thread) |
-| `~/.claude/slack-ops/health.log` | Health check restart log |
-| `~/.claude/slack-ops/pending-connect-*.json` | Pending connection requests from terminal |
+| `~/.local/share/slack-ops/config.json` | Channel, poll interval, keyword, project dir |
+| `~/.local/share/slack-ops/registry.json` | Active session state (session name → tmux + thread) |
+| `~/.local/share/slack-ops/health.log` | Health check restart log |
+| `~/.local/share/slack-ops/pending-connect-*.json` | Pending connection requests from terminal |
 
 ## How It Works
 
@@ -288,7 +288,7 @@ tmux attach -t claude-ops    # attach to orchestrator
 - Slack MCP authenticates as the user — messages appear as "Sent using <user>" (no push notifications for self-sent messages)
 - Worker sessions persist until explicitly closed — no auto-timeout
 - No concurrency limits — machine resources are the natural constraint
-- The orchestrator runs in `~/.claude/slack-ops` as its working directory
+- The orchestrator runs in `~/.local/share/slack-ops` as its working directory
 - Workers started from `/home/vm` to avoid repeated workspace trust prompts
 
 ## Known Limitations
@@ -311,7 +311,7 @@ tmux attach -t claude-ops    # attach to orchestrator
 **Worker not responding**:
 - Check tmux session: `tmux has-session -t login-fix`
 - Attach and check: `tmux attach -t login-fix`
-- Check registry: `cat ~/.claude/slack-ops/registry.json`
+- Check registry: `cat ~/.local/share/slack-ops/registry.json`
 
 **Worker not posting back to Slack**:
 - The orchestrator prefixes routed messages with `[Slack thread message - post your reply...]` context
@@ -325,9 +325,9 @@ tmux attach -t claude-ops    # attach to orchestrator
 
 **slack-connect not working**:
 - Must be run from inside a tmux session (or pass session name explicitly)
-- Check pending file: `ls ~/.claude/slack-ops/pending-connect-*.json`
+- Check pending file: `ls ~/.local/share/slack-ops/pending-connect-*.json`
 - Orchestrator picks it up on next poll (~60s)
 
 **Health check not restarting**:
 - Verify cron: `crontab -l | grep claude-ops`
-- Check log: `cat ~/.claude/slack-ops/health.log`
+- Check log: `cat ~/.local/share/slack-ops/health.log`

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SESSION_NAME="claude-ops"
-WORK_DIR="$HOME/.claude/slack-ops"
+WORK_DIR="$HOME/.local/share/slack-ops"
 LOG_FILE="$WORK_DIR/health.log"
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then

@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-SLACK_OPS_DIR="$HOME/.claude/slack-ops"
+SLACK_OPS_DIR="$HOME/.local/share/slack-ops"
 input=$(cat)
 
 tool_name=$(echo "$input" | jq -r '.tool_name // "unknown"')

@@ -7,7 +7,7 @@
 set -euo pipefail
 
 CHANNEL_ID="C0ASZC1A8H4"
-REGISTRY="$HOME/.claude/slack-ops/registry.json"
+REGISTRY="$HOME/.local/share/slack-ops/registry.json"
 
 # Detect tmux session name
 if [[ -n "${1:-}" ]]; then
@@ -34,7 +34,7 @@ CWD=$(pwd)
 SHORT_CWD="${CWD/#$HOME/~}"
 
 # Write a pending connection file — the orchestrator picks this up
-PENDING_FILE="$HOME/.claude/slack-ops/pending-connect-${SESSION_NAME}.json"
+PENDING_FILE="$HOME/.local/share/slack-ops/pending-connect-${SESSION_NAME}.json"
 cat > "$PENDING_FILE" << EOF
 {
   "tmux_session": "$SESSION_NAME",
