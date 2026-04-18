@@ -250,7 +250,31 @@ ls ~/.claude/slack-ops/pending-prompt-*.json 2>/dev/null
 ```
 Handle the same way — post to thread, delete the file.
 
-### Step 6: Housekeeping
+### Step 6: Safety net — capture idle worker output
+
+For each active session, check if the worker is **idle at a prompt** (not stuck on a permission prompt — that's Step 5):
+```bash
+tmux capture-pane -t <tmux_session> -p 2>/dev/null | tail -5
+```
+
+A worker is idle at the Claude prompt if the last few lines contain the prompt indicator `❯` followed by an empty line, AND there's NO permission prompt pattern (no "Do you want to proceed?", "Enter to confirm", etc.).
+
+If the worker is idle AND the `last_thread_ts_seen` in the registry hasn't changed since the last time we checked (meaning the worker didn't post to Slack itself), AND `last_idle_check` is different from the current capture (meaning this is new idle state, not the same one we already handled):
+
+1. Capture the last **60 lines** of the pane:
+   ```bash
+   tmux capture-pane -t <tmux_session> -p 2>/dev/null | tail -60
+   ```
+2. Extract the meaningful output — look for the last Claude response block (text between the user prompt `❯` markers). Strip ANSI codes, progress spinners, and tool output markers.
+3. Post to the Slack thread: the extracted output as the worker's response
+4. Update `last_idle_capture` in registry to avoid re-posting
+
+This catches cases where:
+- Worker completed work but forgot to post to Slack
+- Worker answered a question but only displayed it in terminal
+- Prompt answers were routed raw and worker continued without Slack context
+
+### Step 7: Housekeeping
 
 1. For each active session, verify tmux session exists:
    ```bash
