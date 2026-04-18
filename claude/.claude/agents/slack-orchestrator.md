@@ -164,6 +164,11 @@ For each active session in registry:
      # "3" → press Down Down Enter (select option 3)
      tmux send-keys -t <tmux_session> Down Down Enter
      ```
+     After sending a raw prompt answer, mark this session as `needs_slack_nudge: true` in the registry. On the **next poll cycle**, if the session is no longer stuck on a prompt (prompt cleared), send a Slack context reminder:
+     ```bash
+     tmux send-keys -t <tmux_session> "[Post your results to the Slack thread using: slack_send_message(channel_id=\"<channel_id>\", message=\"<your update>\", thread_ts=\"<thread_ts>\")]" Enter
+     ```
+     Then set `needs_slack_nudge: false`.
    - **Otherwise**, write the message to a temp file with Slack context prefix:
      ```bash
      cat > /tmp/slack-input-<session_name>.txt << 'EOF'
