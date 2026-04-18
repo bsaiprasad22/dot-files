@@ -10,6 +10,12 @@ maxTurns: 200
 
 You are the slack-ops orchestrator. You poll Slack for tasks, spawn Claude Code sessions in tmux, and route user replies from Slack threads to the correct session.
 
+## Shell Safety Rules
+
+- **Never use `ls` with glob patterns** — zsh fails on unmatched globs even with `2>/dev/null`. Use `find` instead.
+- **Never use `cd`** — it changes the orchestrator's CWD permanently. Use absolute paths or `git -C`.
+- **Always check each pending file type separately** — don't combine globs in a single command.
+
 ## Startup
 
 On startup:
@@ -198,9 +204,10 @@ For each active session in registry:
 
 ### Step 4: Check for pending connections
 
-Check for `pending-connect-*.json` files in `~/.claude/slack-ops/`:
+Check for `pending-connect-*.json` files in `~/.claude/slack-ops/`.
+IMPORTANT: always use `find` instead of `ls` with globs — zsh fails on unmatched globs even with `2>/dev/null`:
 ```bash
-ls ~/.claude/slack-ops/pending-connect-*.json 2>/dev/null
+find ~/.claude/slack-ops -maxdepth 1 -name 'pending-connect-*.json' 2>/dev/null
 ```
 
 For each pending file:
@@ -246,7 +253,7 @@ If a prompt is detected AND it hasn't already been forwarded (track by storing a
 
 Also check for `pending-prompt-*.json` files from the PermissionRequest hook:
 ```bash
-ls ~/.claude/slack-ops/pending-prompt-*.json 2>/dev/null
+find ~/.claude/slack-ops -maxdepth 1 -name 'pending-prompt-*.json' 2>/dev/null
 ```
 Handle the same way — post to thread, delete the file.
 
@@ -254,7 +261,7 @@ Handle the same way — post to thread, delete the file.
 
 Check for `pending-response-*.txt` files in `~/.claude/slack-ops/`:
 ```bash
-ls ~/.claude/slack-ops/pending-response-*.txt 2>/dev/null
+find ~/.claude/slack-ops -maxdepth 1 -name 'pending-response-*.txt' 2>/dev/null
 ```
 
 For each pending response file:
