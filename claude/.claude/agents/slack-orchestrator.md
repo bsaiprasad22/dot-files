@@ -250,6 +250,21 @@ ls ~/.claude/slack-ops/pending-prompt-*.json 2>/dev/null
 ```
 Handle the same way — post to thread, delete the file.
 
+### Step 6: Post pending responses from Stop hook
+
+Check for `pending-response-*.txt` files in `~/.claude/slack-ops/`:
+```bash
+ls ~/.claude/slack-ops/pending-response-*.txt 2>/dev/null
+```
+
+For each pending response file:
+1. Extract the session name from the filename (e.g., `pending-response-jira_mcp_fix.txt` → `jira_mcp_fix`)
+2. Look up the session's Slack thread from the registry
+3. Read the file content — this is Claude's `last_assistant_message` from the Stop hook
+4. Truncate to 3500 chars if needed (Slack limit ~4000, leave room for formatting)
+5. Post to the Slack thread as the worker's response
+6. Delete the file: `rm <pending_response_file>`
+
 ### Step 6: Safety net — capture idle worker output
 
 For each active session, check if the worker is **idle at a prompt** (not stuck on a permission prompt — that's Step 5):

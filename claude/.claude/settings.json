@@ -146,6 +146,17 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/stop-to-slack.sh"
+          }
+        ]
+      }
+    ],
     "PermissionRequest": [
       {
         "matcher": "",
