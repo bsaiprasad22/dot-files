@@ -151,11 +151,19 @@ For each active session in registry:
    - Skip the "@claude close" command (handle separately)
 
 3. For each new user message:
-   - **Check if it's a raw prompt answer**: if the message is short and matches a prompt response pattern (e.g., just `1`, `2`, `3`, `yes`, `no`, `y`, `n`), send it **raw** without the Slack context wrapper:
+   - **Check if it's a prompt answer**: if the message is short and matches a prompt response pattern (e.g., just `1`, `2`, `3`, `yes`, `no`, `y`, `n`), send it as **key events** for Claude's TUI prompts:
+     IMPORTANT: Claude Code permission prompts use arrow-key TUI selection, NOT text input.
+     The cursor `❯` starts on option 1. Sending "1" as text does NOT work.
      ```bash
-     tmux send-keys -t <tmux_session> "<message_text>" Enter
+     # "1", "yes", "y" → press Enter (option 1 is already selected)
+     tmux send-keys -t <tmux_session> Enter
+
+     # "2", "no", "n" → press Down then Enter (select option 2)
+     tmux send-keys -t <tmux_session> Down Enter
+
+     # "3" → press Down Down Enter (select option 3)
+     tmux send-keys -t <tmux_session> Down Down Enter
      ```
-     This handles permission prompts, confirmation dialogs, and other Claude UI prompts that the worker may be stuck on.
    - **Otherwise**, write the message to a temp file with Slack context prefix:
      ```bash
      cat > /tmp/slack-input-<session_name>.txt << 'EOF'
@@ -205,24 +213,30 @@ For each pending file:
 
 For each active session in the registry, capture the tmux pane and check if the session is stuck on a prompt:
 ```bash
-tmux capture-pane -t <tmux_session> -p 2>/dev/null | tail -20
+tmux capture-pane -t <tmux_session> -p 2>/dev/null | tail -40
 ```
 
-Look for these patterns in the last 20 lines:
+Use **40 lines** (not 20) to capture full context — the tool name, command, and description appear above the prompt options.
+
+Look for these patterns:
 - `"Do you want to proceed?"` — permission prompt
 - `"❯ 1."` — selection prompt (numbered options)
 - `"Enter to confirm"` — confirmation prompt
 - `"Esc to cancel"` — any Claude dialog
-- `"y/n"` or `"[Y/n]"` — yes/no prompt
 
-If a prompt is detected AND it hasn't already been forwarded (track by checking if the prompt text matches the last forwarded prompt for this session):
-1. Extract the relevant lines (the question + options)
-2. Post to the Slack thread:
-   "⚠ `<session_name>` is waiting for input:
+If a prompt is detected AND it hasn't already been forwarded (track by storing a hash of the prompt text in registry as `last_forwarded_prompt`):
+1. Extract the **full prompt block** — everything from the tool use description box down to the options. This includes:
+   - The tool name and description (e.g., "Bash command", "Read file")
+   - The actual command or file path being requested
+   - The reason for the permission check
+   - The numbered options
+2. Post to the Slack thread with ALL details preserved:
+   "⚠ `<session_name>` needs permission:
    ```
-   <prompt text from capture>
+   <full prompt block from capture — include tool name, command, description, and options>
    ```
-   Reply with the option number (e.g., `1`) or `yes`/`no` to answer."
+   Reply `1` = Yes, `2` = No (or `3` if shown)."
+3. Update `last_forwarded_prompt` in registry
 3. Track that this prompt was forwarded (store a hash of the prompt text in the registry entry as `last_forwarded_prompt`) to avoid re-posting the same prompt every cycle
 
 Also check for `pending-prompt-*.json` files from the PermissionRequest hook:
