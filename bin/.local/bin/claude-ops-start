@@ -17,7 +17,7 @@ mkdir -p "$WORK_DIR"
 
 echo "Starting slack-ops orchestrator..."
 tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
-  "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm"
+  "claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm --effort medium"
 
 # Wait for Claude to fully start (check for INSERT mode in status line)
 echo -n "Waiting for Claude to start"
