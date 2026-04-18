@@ -201,19 +201,35 @@ For each pending file:
    ```
 6. Delete the pending file: `rm <pending_file>`
 
-### Step 5: Forward permission prompts
+### Step 5: Detect stuck prompts
 
-Check for `pending-prompt-*.json` files in `~/.claude/slack-ops/`:
+For each active session in the registry, capture the tmux pane and check if the session is stuck on a prompt:
+```bash
+tmux capture-pane -t <tmux_session> -p 2>/dev/null | tail -20
+```
+
+Look for these patterns in the last 20 lines:
+- `"Do you want to proceed?"` — permission prompt
+- `"❯ 1."` — selection prompt (numbered options)
+- `"Enter to confirm"` — confirmation prompt
+- `"Esc to cancel"` — any Claude dialog
+- `"y/n"` or `"[Y/n]"` — yes/no prompt
+
+If a prompt is detected AND it hasn't already been forwarded (track by checking if the prompt text matches the last forwarded prompt for this session):
+1. Extract the relevant lines (the question + options)
+2. Post to the Slack thread:
+   "⚠ `<session_name>` is waiting for input:
+   ```
+   <prompt text from capture>
+   ```
+   Reply with the option number (e.g., `1`) or `yes`/`no` to answer."
+3. Track that this prompt was forwarded (store a hash of the prompt text in the registry entry as `last_forwarded_prompt`) to avoid re-posting the same prompt every cycle
+
+Also check for `pending-prompt-*.json` files from the PermissionRequest hook:
 ```bash
 ls ~/.claude/slack-ops/pending-prompt-*.json 2>/dev/null
 ```
-
-For each pending prompt file:
-1. Read the file to get `tmux_session`, `tool_name`, `command`, `description`
-2. Look up the session's Slack thread from the registry
-3. Post to the thread: "⚠ `<session_name>` needs permission:\nTool: `<tool_name>`\nCommand: `<command>`\n`<description>`\nReply with `1` (yes) or `2` (no)."
-4. Delete the pending prompt file
-5. If the session is not in the registry (not connected to Slack), skip silently
+Handle the same way — post to thread, delete the file.
 
 ### Step 6: Housekeeping
 
