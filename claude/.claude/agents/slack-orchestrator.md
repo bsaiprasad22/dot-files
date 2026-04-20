@@ -336,15 +336,12 @@ This catches cases where:
 3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min):
    a. Stop the CronCreate job
    b. Write the registry one final time
-   c. **Clear context and restart polling** by sending `/clear` then the startup prompt to your own tmux session:
+   c. **Force exit** by killing your own Claude process:
       ```bash
-      tmux send-keys -t claude-ops "/clear" Enter
-      sleep 2
-      tmux send-keys -t claude-ops "Start polling now." Enter
-      sleep 1
-      tmux send-keys -t claude-ops Enter
+      kill $PPID
       ```
-      This clears conversation context while keeping the same session — no process restart, no trust prompts, no startup delay.
+      The tmux session has a restart loop that relaunches Claude within 5 seconds.
+      Do NOT use `tmux kill-session` — that kills the restart loop too.
       The registry and config persist on disk — no state is lost.
 
 ## Initial Prompt Template
