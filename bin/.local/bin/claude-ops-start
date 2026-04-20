@@ -17,7 +17,7 @@ mkdir -p "$WORK_DIR"
 
 echo "Starting slack-ops orchestrator..."
 tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR" \
-  "while true; do claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm --effort medium; echo 'Orchestrator exited. Restarting in 5s...'; sleep 5; done"
+  "while true; do claude --agent slack-orchestrator --dangerously-skip-permissions --add-dir /home/vm --effort medium & CLAUDE_PID=\$!; sleep 10; tmux send-keys -t $SESSION_NAME 'Start polling now.' Enter; sleep 1; tmux send-keys -t $SESSION_NAME Enter; wait \$CLAUDE_PID; echo 'Orchestrator exited. Restarting in 5s...'; sleep 5; done"
 
 # Wait for Claude to fully start (check for INSERT mode in status line)
 echo -n "Waiting for Claude to start"
