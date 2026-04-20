@@ -336,8 +336,13 @@ This catches cases where:
 3. **Context management**: track the number of poll cycles completed. After 50 cycles (~50 min):
    a. Stop the CronCreate job
    b. Write the registry one final time
-   c. **Exit by typing `/exit`** — the tmux session has a restart loop that will relaunch Claude within 5 seconds with fresh context.
+   c. **Force exit** by killing your own Claude process:
+      ```bash
+      kill $PPID
+      ```
+      The tmux session has a restart loop that relaunches Claude within 5 seconds.
       Do NOT use `tmux kill-session` — that would kill the restart loop too.
+      Do NOT type `/exit` — it's a CLI command, not a tool you can invoke.
       The registry and config persist on disk — no state is lost.
 
 ## Initial Prompt Template
