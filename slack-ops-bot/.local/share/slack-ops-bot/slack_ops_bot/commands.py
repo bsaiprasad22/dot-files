@@ -24,6 +24,11 @@ def parse(text: str) -> ParsedCommand:
     if lower in ("list", "sessions"):
         return ParsedCommand(type="list")
 
+    # "connect <session_name>" — connect to existing tmux session
+    if lower.startswith("connect "):
+        name = text[8:].strip()
+        return ParsedCommand(type="task", session_name=name, description=f"Connect to {name}")
+
     # Extract optional [session_name]
     session_name = None
     bracket_match = _BRACKET_RE.search(text)
