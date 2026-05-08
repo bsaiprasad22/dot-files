@@ -21,7 +21,8 @@ from .sessions import SessionManager
 from .utils import generate_session_key, logger, setup_logging, strip_mention, truncate
 from .workers import WorkerManager
 
-KEYWORD_RE = re.compile(r"@claude\b", re.IGNORECASE)
+# Match @claude (literal text), <@BOT_ID> (bot mention), or <@MCP_CLAUDE_ID> (MCP user mention)
+KEYWORD_RE = re.compile(r"@claude\b|<@U093QLYKTTQ>|<@U0AKS251CCT>", re.IGNORECASE)
 
 
 def main() -> None:
