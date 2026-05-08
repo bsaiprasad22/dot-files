@@ -54,29 +54,46 @@ class PromptScanner:
             if not pane:
                 continue
 
+            # Hash only the stable content (strip status bar, timestamps, cost)
+            stable = self._stable_content(pane)
+            content_hash = hashlib.md5(stable.encode()).hexdigest()[:8]
+
             # Check for stuck permission prompts
             if any(p.search(pane) for p in TUI_PATTERNS):
-                prompt_hash = hashlib.md5(pane.encode()).hexdigest()[:8]
                 last = entry.get("last_forwarded_prompt")
-                if last != prompt_hash:
+                if last != content_hash:
                     self._forward_prompt(key, entry, pane)
-                    self.sessions.update_field(key, "last_forwarded_prompt", prompt_hash)
+                    self.sessions.update_field(key, "last_forwarded_prompt", content_hash)
 
             # Check for idle worker at input prompt — forward output as safety net
             elif self.router.detect_state(pane) == "input_prompt":
-                pane_hash = hashlib.md5(pane.encode()).hexdigest()[:8]
                 last_idle = entry.get("last_idle_capture")
-                if last_idle != pane_hash:
-                    # New idle state — worker finished a response but Stop hook
-                    # didn't fire (old session or hook not loaded). Forward output.
+                if last_idle != content_hash:
                     self._forward_idle_output(key, entry, pane)
-                    self.sessions.update_field(key, "last_idle_capture", pane_hash)
+                    self.sessions.update_field(key, "last_idle_capture", content_hash)
 
             # Clear nudge flag if prompt was resolved
             if entry.get("needs_slack_nudge"):
                 state = self.router.detect_state(self._capture(tmux, 15))
                 if state != "tui_prompt":
                     self.sessions.update_field(key, "needs_slack_nudge", False)
+
+    def _stable_content(self, pane_text: str) -> str:
+        """Strip volatile lines (status bar, timestamps, cost) before hashing."""
+        stable = []
+        for line in pane_text.split("\n"):
+            stripped = line.strip()
+            # Skip status bar lines that change every second
+            if stripped.startswith("dir:") or "-- INSERT --" in stripped:
+                continue
+            if "ctx:" in stripped or "cost:" in stripped or "time:" in stripped or "tok:" in stripped:
+                continue
+            if stripped.startswith("────"):
+                continue
+            if stripped.startswith("❯") and not stripped.rstrip("❯ "):
+                continue
+            stable.append(stripped)
+        return "\n".join(stable)
 
     def _capture(self, tmux_session: str, lines: int) -> str:
         result = run(f"tmux capture-pane -t {tmux_session} -p 2>/dev/null")
