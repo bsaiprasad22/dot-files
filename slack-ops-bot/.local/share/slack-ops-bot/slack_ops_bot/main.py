@@ -93,15 +93,25 @@ def main() -> None:
 
     logger.info("Polling started.")
 
+    current_interval = config.poll_interval
+    max_interval = 60.0
+
     while running:
         try:
             _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, bot_id, last_channel_ts)
-            # Update last_channel_ts from registry/state
+            # Reset to base interval on success
+            if current_interval != config.poll_interval:
+                logger.info(f"Backoff cleared, interval back to {config.poll_interval}s")
+                current_interval = config.poll_interval
         except Exception as e:
-            logger.error(f"Poll error: {e}")
+            if "ratelimited" in str(e).lower() or "rate_limited" in str(e).lower():
+                current_interval = min(current_interval * 2, max_interval)
+                logger.warning(f"Rate limited — backing off to {current_interval}s")
+            else:
+                logger.error(f"Poll error: {e}")
 
         # Wait for next cycle
-        for _ in range(int(config.poll_interval * 10)):
+        for _ in range(int(current_interval * 10)):
             if not running:
                 break
             time.sleep(0.1)
