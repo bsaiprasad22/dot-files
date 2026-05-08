@@ -77,12 +77,13 @@ class MessageRouter:
             run(f"tmux send-keys -t {tmux_session} Enter")
 
     def send_text_input(self, tmux_session: str, text: str) -> None:
-        if len(text) > 500:
-            tmp = Path(f"/tmp/slack-input-{tmux_session}.txt")
-            tmp.write_text(text)
-            run(f'tmux send-keys -t {tmux_session} "$(cat {tmp})" Enter')
-        else:
-            run(f"tmux send-keys -t {tmux_session} '{self._escape(text)}' Enter")
+        # Always use temp file to avoid shell escaping issues
+        tmp = Path(f"/tmp/slack-input-{tmux_session}.txt")
+        tmp.write_text(text)
+        run(f'tmux send-keys -t {tmux_session} "$(cat {tmp})" Enter')
+        # Extra Enter in case paste protection triggers
+        time.sleep(0.5)
+        run(f"tmux send-keys -t {tmux_session} Enter")
 
     def _escape(self, text: str) -> str:
         return text.replace("'", "'\\''")
