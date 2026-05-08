@@ -62,11 +62,20 @@ class PromptScanner:
                     self._forward_prompt(key, entry, pane)
                     self.sessions.update_field(key, "last_forwarded_prompt", prompt_hash)
 
-            # Check for nudge needed (after TUI answer was routed)
-            elif entry.get("needs_slack_nudge"):
+            # Check for idle worker at input prompt — forward output as safety net
+            elif self.router.detect_state(pane) == "input_prompt":
+                pane_hash = hashlib.md5(pane.encode()).hexdigest()[:8]
+                last_idle = entry.get("last_idle_capture")
+                if last_idle != pane_hash:
+                    # New idle state — worker finished a response but Stop hook
+                    # didn't fire (old session or hook not loaded). Forward output.
+                    self._forward_idle_output(key, entry, pane)
+                    self.sessions.update_field(key, "last_idle_capture", pane_hash)
+
+            # Clear nudge flag if prompt was resolved
+            if entry.get("needs_slack_nudge"):
                 state = self.router.detect_state(self._capture(tmux, 15))
                 if state != "tui_prompt":
-                    # Prompt was resolved — no nudge needed, Stop hook will handle it
                     self.sessions.update_field(key, "needs_slack_nudge", False)
 
     def _capture(self, tmux_session: str, lines: int) -> str:
@@ -75,6 +84,29 @@ class PromptScanner:
             return ""
         output = result.stdout.strip().split("\n")
         return "\n".join(output[-lines:])
+
+    def _forward_idle_output(self, key: str, entry: dict, pane_text: str) -> None:
+        # Extract the last Claude response — text between the last two ❯ prompts
+        lines = pane_text.strip().split("\n")
+        # Find lines that are Claude's output (not status bars, not prompts)
+        output_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("❯") or stripped.startswith("dir:") or "-- INSERT --" in stripped:
+                continue
+            if stripped.startswith("────"):
+                continue
+            output_lines.append(line)
+        output = "\n".join(output_lines).strip()
+        if not output:
+            return
+        msg = f"*{key}*:\n{truncate(output, 3000)}"
+        self.client.chat_postMessage(
+            channel=entry["channel_id"],
+            thread_ts=entry["thread_ts"],
+            text=msg,
+        )
+        logger.info(f"Forwarded idle output for {key}")
 
     def _forward_prompt(self, key: str, entry: dict, pane_text: str) -> None:
         msg = f"*{key}* is waiting for input:\n```\n{truncate(pane_text, 2500)}\n```\nReply `1` = Yes, `2` = No (or `3` if shown)"
