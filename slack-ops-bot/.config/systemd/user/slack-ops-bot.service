@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/share/slack-ops
+WorkingDirectory=%h/.local/share/slack-ops-bot
 ExecStart=%h/.local/share/slack-ops-bot/.venv/bin/python -m slack_ops_bot.main
 EnvironmentFile=%h/.local/share/slack-ops-bot/.env
 Restart=on-failure
