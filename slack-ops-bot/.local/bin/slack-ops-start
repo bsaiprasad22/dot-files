@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Start the slack-ops bot via systemd
+set -euo pipefail
+systemctl --user daemon-reload
+systemctl --user enable slack-ops-bot
+systemctl --user start slack-ops-bot
+echo "Slack-ops bot started."
+echo "Logs: journalctl --user -u slack-ops-bot -f"
+echo "Stop: slack-ops-stop"

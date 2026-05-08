@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Check slack-ops bot status
+set -euo pipefail
+systemctl --user status slack-ops-bot

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stop the slack-ops bot. Workers keep running.
+set -euo pipefail
+systemctl --user stop slack-ops-bot
+echo "Slack-ops bot stopped. Workers still running."
+echo "Restart: slack-ops-start"
