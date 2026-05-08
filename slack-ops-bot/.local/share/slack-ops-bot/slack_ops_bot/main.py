@@ -159,8 +159,11 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
             continue
 
         text = msg.get("text", "")
-        # Skip bot messages
+        # Skip bot messages and Claude MCP messages
         if msg.get("bot_id") or msg.get("subtype"):
+            _last_channel_ts = ts
+            continue
+        if "Sent using" in text:
             _last_channel_ts = ts
             continue
 
@@ -174,14 +177,19 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
             _last_channel_ts = ts
             continue
 
-        # Parse command
+        # Parse command — strip mention and "Sent using" footer
         clean_text = KEYWORD_RE.sub("", text).strip()
+        clean_text = re.sub(r"\*?Sent using\*?.*$", "", clean_text, flags=re.DOTALL).strip()
         cmd = parse(clean_text)
+        logger.info(f"New message: ts={ts} cmd={cmd.type} text={clean_text[:50]}")
 
-        if cmd.type == "list":
-            _handle_list(poster, config.channel_id, ts, workers, sessions)
-        elif cmd.type == "task":
-            _handle_task(poster, config, ts, cmd, sessions, workers, jira_client)
+        try:
+            if cmd.type == "list":
+                _handle_list(poster, config.channel_id, ts, workers, sessions)
+            elif cmd.type == "task":
+                _handle_task(poster, config, ts, cmd, sessions, workers, jira_client)
+        except Exception as e:
+            logger.error(f"Handler error for {cmd.type}: {e}", exc_info=True)
 
         _last_channel_ts = ts
 
