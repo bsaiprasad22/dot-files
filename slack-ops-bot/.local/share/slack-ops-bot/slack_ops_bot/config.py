@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 @dataclass
 class Config:
     slack_bot_token: str
-    slack_app_token: str
+    slack_user_token: str
     channel_id: str
     jira_url: str
     jira_email: str
@@ -21,7 +21,9 @@ class Config:
     state_dir: Path
     keyword: str = "@claude"
     worktree_base: str = "/home/vm/worktrees"
+    poll_interval: float = 5.0
     prompt_scan_interval: float = 5.0
+    credentials_path: Path = Path.home() / ".claude" / ".credentials.json"
 
     @classmethod
     def load(cls, env_path: str | None = None) -> "Config":
@@ -44,9 +46,21 @@ class Config:
         def env(key: str, default: str = "") -> str:
             return os.environ.get(key, default)
 
+        # Load user token from Claude's MCP OAuth credentials
+        user_token = env("SLACK_USER_TOKEN")
+        if not user_token:
+            creds_path = Path.home() / ".claude" / ".credentials.json"
+            if creds_path.exists():
+                with open(creds_path) as f:
+                    creds = json.load(f)
+                for key, val in creds.get("mcpOAuth", {}).items():
+                    if "slack" in key.lower():
+                        user_token = val.get("accessToken", "")
+                        break
+
         return cls(
             slack_bot_token=env("SLACK_BOT_TOKEN"),
-            slack_app_token=env("SLACK_APP_TOKEN"),
+            slack_user_token=user_token,
             channel_id=file_config.get("channel_id", env("SLACK_CHANNEL_ID", "C0ASZC1A8H4")),
             jira_url=env("JIRA_URL", "https://pensando.atlassian.net"),
             jira_email=env("JIRA_EMAIL"),
@@ -61,8 +75,8 @@ class Config:
         errors = []
         if not self.slack_bot_token:
             errors.append("SLACK_BOT_TOKEN not set")
-        if not self.slack_app_token:
-            errors.append("SLACK_APP_TOKEN not set")
+        if not self.slack_user_token:
+            errors.append("SLACK_USER_TOKEN not set (check .env or ~/.claude/.credentials.json)")
         if not self.state_dir.exists():
             errors.append(f"State dir missing: {self.state_dir}")
         return errors
