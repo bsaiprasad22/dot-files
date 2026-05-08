@@ -123,18 +123,31 @@ def main() -> None:
     logger.info("Shutdown complete.")
 
 
-# State for tracking last seen timestamps
-_last_channel_ts = "0"
+# State for tracking last seen timestamps — set on startup
+_last_channel_ts = None  # None = needs initialization
 
 
 def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, bot_id, _unused):
     global _last_channel_ts
 
+    # Initialize: skip all existing messages on first poll
+    if _last_channel_ts is None:
+        try:
+            init = reader.conversations_history(channel=config.channel_id, limit=1)
+            if init.get("messages"):
+                _last_channel_ts = init["messages"][0]["ts"]
+            else:
+                _last_channel_ts = "0"
+            logger.info(f"Initialized last_channel_ts: {_last_channel_ts}")
+            return
+        except Exception as e:
+            logger.error(f"Init failed: {e}")
+            _last_channel_ts = "0"
+            return
+
     # Step 1: Read channel for new messages
     try:
-        kwargs = {"channel": config.channel_id, "limit": 20}
-        if _last_channel_ts != "0":
-            kwargs["oldest"] = _last_channel_ts
+        kwargs = {"channel": config.channel_id, "limit": 20, "oldest": _last_channel_ts}
         history = reader.conversations_history(**kwargs)
     except Exception as e:
         logger.error(f"Channel read failed: {e}")
