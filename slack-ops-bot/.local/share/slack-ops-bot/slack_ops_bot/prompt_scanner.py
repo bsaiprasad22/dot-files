@@ -43,34 +43,36 @@ class PromptScanner:
             self._stop.wait(self.interval)
 
     def _scan(self) -> None:
+        import time as _time
+
         active = self.sessions.get_active_sessions()
         dead = self.sessions.cleanup_dead_sessions()
         if dead:
             logger.info(f"Cleaned dead sessions: {dead}")
 
+        now = _time.time()
+
         for key, entry in active.items():
             tmux = entry.get("tmux_session", key)
+
+            # Debounce: skip if we forwarded for this session in last 60s
+            last_fwd = entry.get("last_forward_time", 0)
+            if now - last_fwd < 60:
+                continue
+
             pane = self._capture(tmux, 40)
             if not pane:
                 continue
 
-            # Hash only the stable content (strip status bar, timestamps, cost)
-            stable = self._stable_content(pane)
-            content_hash = hashlib.md5(stable.encode()).hexdigest()[:8]
-
             # Check for stuck permission prompts
             if any(p.search(pane) for p in TUI_PATTERNS):
-                last = entry.get("last_forwarded_prompt")
-                if last != content_hash:
-                    self._forward_prompt(key, entry, pane)
-                    self.sessions.update_field(key, "last_forwarded_prompt", content_hash)
+                self._forward_prompt(key, entry, pane)
+                self.sessions.update_field(key, "last_forward_time", now)
 
             # Check for idle worker at input prompt — forward output as safety net
             elif self.router.detect_state(pane) == "input_prompt":
-                last_idle = entry.get("last_idle_capture")
-                if last_idle != content_hash:
-                    self._forward_idle_output(key, entry, pane)
-                    self.sessions.update_field(key, "last_idle_capture", content_hash)
+                self._forward_idle_output(key, entry, pane)
+                self.sessions.update_field(key, "last_forward_time", now)
 
             # Clear nudge flag if prompt was resolved
             if entry.get("needs_slack_nudge"):

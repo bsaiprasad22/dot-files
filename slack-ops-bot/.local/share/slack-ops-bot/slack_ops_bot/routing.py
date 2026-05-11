@@ -31,6 +31,9 @@ class MessageRouter:
         pane = self.capture_pane(tmux)
         state = self.detect_state(pane)
 
+        # Reset debounce so next response gets forwarded
+        self.sessions.update_field(key, "last_forward_time", 0)
+
         if state == "tui_prompt":
             self.send_tui_response(tmux, text)
             self.sessions.update_field(key, "needs_slack_nudge", True)
