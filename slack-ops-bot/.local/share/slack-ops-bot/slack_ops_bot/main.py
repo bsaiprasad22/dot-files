@@ -105,9 +105,17 @@ def main() -> None:
                 logger.info(f"Backoff cleared, interval back to {config.poll_interval}s")
                 current_interval = config.poll_interval
         except Exception as e:
-            if "ratelimited" in str(e).lower() or "rate_limited" in str(e).lower():
+            err = str(e).lower()
+            if "ratelimited" in err or "rate_limited" in err:
                 current_interval = min(current_interval * 2, max_interval)
                 logger.warning(f"Rate limited — backing off to {current_interval}s")
+            elif "token_expired" in err or "invalid_auth" in err:
+                logger.warning("User token expired, refreshing...")
+                if config.refresh_user_token():
+                    reader = WebClient(token=config.slack_user_token)
+                    logger.info("User token refreshed from credentials file")
+                else:
+                    logger.error("Token refresh failed — run a Claude session to re-auth Slack MCP")
             else:
                 logger.error(f"Poll error: {e}")
 

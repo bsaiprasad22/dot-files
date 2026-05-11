@@ -49,14 +49,7 @@ class Config:
         # Load user token from Claude's MCP OAuth credentials
         user_token = env("SLACK_USER_TOKEN")
         if not user_token:
-            creds_path = Path.home() / ".claude" / ".credentials.json"
-            if creds_path.exists():
-                with open(creds_path) as f:
-                    creds = json.load(f)
-                for key, val in creds.get("mcpOAuth", {}).items():
-                    if "slack" in key.lower():
-                        user_token = val.get("accessToken", "")
-                        break
+            user_token = cls._load_mcp_slack_token()
 
         return cls(
             slack_bot_token=env("SLACK_BOT_TOKEN"),
@@ -70,6 +63,30 @@ class Config:
             state_dir=state_dir,
             keyword=file_config.get("keyword", "@claude"),
         )
+
+    @staticmethod
+    def _load_mcp_slack_token() -> str:
+        """Load Slack user token from Claude's MCP OAuth credentials."""
+        creds_path = Path.home() / ".claude" / ".credentials.json"
+        if not creds_path.exists():
+            return ""
+        try:
+            with open(creds_path) as f:
+                creds = json.load(f)
+            for key, val in creds.get("mcpOAuth", {}).items():
+                if "slack" in key.lower():
+                    return val.get("accessToken", "")
+        except (json.JSONDecodeError, OSError):
+            pass
+        return ""
+
+    def refresh_user_token(self) -> bool:
+        """Re-read user token from credentials file (Claude refreshes it)."""
+        new_token = self._load_mcp_slack_token()
+        if new_token and new_token != self.slack_user_token:
+            self.slack_user_token = new_token
+            return True
+        return False
 
     def validate(self) -> list[str]:
         errors = []
