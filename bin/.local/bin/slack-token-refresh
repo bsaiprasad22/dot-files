@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Refresh Slack MCP OAuth token by running a quick Claude command.
+# Token expires every 12h — run this every 6h via cron for safety margin.
+# Cron: 0 */6 * * * /home/vm/.local/bin/slack-token-refresh
+
+set -euo pipefail
+
+CLAUDE_BIN="$HOME/.local/bin/claude"
+LOG="$HOME/.local/share/slack-ops/token-refresh.log"
+
+echo "$(date -Iseconds) — Refreshing Slack token..." >> "$LOG"
+
+# Run Claude in print mode with a minimal Slack MCP call
+# This triggers the OAuth token refresh automatically
+$CLAUDE_BIN -p --dangerously-skip-permissions \
+  "Read the last message from Slack channel C0ASZC1A8H4 using slack_read_channel. Just say OK." \
+  > /dev/null 2>&1
+
+echo "$(date -Iseconds) — Token refreshed." >> "$LOG"
+
+# Rotate log
+if [[ -f "$LOG" ]] && [[ $(stat -c%s "$LOG" 2>/dev/null || echo 0) -gt 524288 ]]; then
+    mv "$LOG" "${LOG}.old"
+fi
