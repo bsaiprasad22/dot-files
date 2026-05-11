@@ -59,14 +59,10 @@ class PromptScanner:
             if not pane:
                 continue
 
-            # Check for stuck permission prompts
+            # Only forward TUI permission prompts (need user action)
+            # Regular responses are handled by the Stop hook
             if any(p.search(pane) for p in TUI_PATTERNS):
                 self._forward_prompt(key, entry, pane)
-                self.sessions.update_field(key, "prompt_forwarded", True)
-
-            # Check for idle worker at input prompt — forward output as safety net
-            elif self.router.detect_state(pane) == "input_prompt":
-                self._forward_idle_output(key, entry, pane)
                 self.sessions.update_field(key, "prompt_forwarded", True)
 
             # Clear nudge flag if prompt was resolved
