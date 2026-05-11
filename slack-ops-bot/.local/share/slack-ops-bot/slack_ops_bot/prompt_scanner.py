@@ -43,21 +43,16 @@ class PromptScanner:
             self._stop.wait(self.interval)
 
     def _scan(self) -> None:
-        import time as _time
-
         active = self.sessions.get_active_sessions()
         dead = self.sessions.cleanup_dead_sessions()
         if dead:
             logger.info(f"Cleaned dead sessions: {dead}")
 
-        now = _time.time()
-
         for key, entry in active.items():
             tmux = entry.get("tmux_session", key)
 
-            # Debounce: skip if we forwarded for this session in last 60s
-            last_fwd = entry.get("last_forward_time", 0)
-            if now - last_fwd < 60:
+            # Skip if already forwarded — wait for user reply to reset
+            if entry.get("prompt_forwarded"):
                 continue
 
             pane = self._capture(tmux, 40)
@@ -67,12 +62,12 @@ class PromptScanner:
             # Check for stuck permission prompts
             if any(p.search(pane) for p in TUI_PATTERNS):
                 self._forward_prompt(key, entry, pane)
-                self.sessions.update_field(key, "last_forward_time", now)
+                self.sessions.update_field(key, "prompt_forwarded", True)
 
             # Check for idle worker at input prompt — forward output as safety net
             elif self.router.detect_state(pane) == "input_prompt":
                 self._forward_idle_output(key, entry, pane)
-                self.sessions.update_field(key, "last_forward_time", now)
+                self.sessions.update_field(key, "prompt_forwarded", True)
 
             # Clear nudge flag if prompt was resolved
             if entry.get("needs_slack_nudge"):
