@@ -58,7 +58,8 @@ def parse(text: str) -> ParsedCommand:
 def parse_thread_command(text: str) -> str | None:
     """Check if a thread reply is a close/kill command."""
     lower = text.strip().lower()
-    # Match with or without @mention prefix
+    # Strip Slack mention format <@U1234> and plain @mention
+    lower = re.sub(r"<@[a-z0-9]+>\s*", "", lower, flags=re.IGNORECASE).strip()
     lower = re.sub(r"@\w+\s*", "", lower).strip()
     if lower in ("close", "disconnect"):
         return "close"

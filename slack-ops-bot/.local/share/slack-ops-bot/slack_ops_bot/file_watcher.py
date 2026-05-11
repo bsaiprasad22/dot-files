@@ -46,6 +46,10 @@ class PendingFileHandler(FileSystemEventHandler):
             path.unlink(missing_ok=True)
             return
 
+        # Set debounce so prompt scanner doesn't also forward this
+        import time
+        self.sessions.update_field(key, "last_forward_time", time.time())
+
         self.client.chat_postMessage(
             channel=entry["channel_id"],
             thread_ts=entry["thread_ts"],
@@ -71,6 +75,10 @@ class PendingFileHandler(FileSystemEventHandler):
         tool = prompt_data.get("tool_name", "unknown")
         cmd = prompt_data.get("command", "")
         desc = prompt_data.get("description", "")
+
+        # Set debounce so prompt scanner doesn't also forward this
+        import time
+        self.sessions.update_field(key, "last_forward_time", time.time())
 
         msg = f"*{session_name}* needs permission:\nTool: `{tool}`\nCommand: `{cmd}`"
         if desc:
