@@ -24,6 +24,16 @@ def parse(text: str) -> ParsedCommand:
     if lower in ("list", "sessions"):
         return ParsedCommand(type="list")
 
+    # "kill <session_name>" — kill a session
+    if lower.startswith("kill "):
+        name = text[5:].strip()
+        return ParsedCommand(type="kill", session_name=name)
+
+    # "close <session_name>" — disconnect a session from Slack
+    if lower.startswith("close "):
+        name = text[6:].strip()
+        return ParsedCommand(type="close", session_name=name)
+
     # "connect <session_name>" — connect to existing tmux session
     if lower.startswith("connect "):
         name = text[8:].strip()

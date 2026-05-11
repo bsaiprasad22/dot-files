@@ -194,6 +194,14 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
         try:
             if cmd.type == "list":
                 _handle_list(poster, config.channel_id, ts, workers, sessions)
+            elif cmd.type == "kill":
+                result = workers.kill_worker(cmd.session_name)
+                poster.chat_postMessage(channel=config.channel_id, thread_ts=ts,
+                    text=f"Session `{cmd.session_name}` terminated. Cleaned: {', '.join(result['cleaned'])}")
+            elif cmd.type == "close":
+                sessions.close_session(cmd.session_name)
+                poster.chat_postMessage(channel=config.channel_id, thread_ts=ts,
+                    text=f"Session `{cmd.session_name}` disconnected from Slack.")
             elif cmd.type == "task":
                 _handle_task(poster, config, ts, cmd, sessions, workers, jira_client)
         except Exception as e:
