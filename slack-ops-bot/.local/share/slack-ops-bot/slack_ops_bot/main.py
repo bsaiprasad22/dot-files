@@ -98,6 +98,11 @@ def main() -> None:
     max_interval = 60.0
 
     while running:
+        # Re-read token from credentials file every poll (just a file read)
+        if config.refresh_user_token():
+            reader = WebClient(token=config.slack_user_token)
+            logger.info("Token refreshed from credentials file")
+
         try:
             _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, bot_id, last_channel_ts)
             # Reset to base interval on success
@@ -158,6 +163,9 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
         kwargs = {"channel": config.channel_id, "limit": 20, "oldest": _last_channel_ts}
         history = reader.conversations_history(**kwargs)
     except Exception as e:
+        err = str(e).lower()
+        if "token_expired" in err or "invalid_auth" in err:
+            raise  # Let outer loop handle token refresh
         logger.error(f"Channel read failed: {e}")
         return
 
