@@ -12,10 +12,11 @@ from .utils import logger, truncate
 
 
 class PendingFileHandler(FileSystemEventHandler):
-    def __init__(self, config: Config, sessions: SessionManager, slack_client):
+    def __init__(self, config: Config, sessions: SessionManager, slack_client, reader_client=None):
         self.config = config
         self.sessions = sessions
         self.client = slack_client
+        self.reader = reader_client  # for reactions (needs user token)
 
     def on_created(self, event):
         if event.is_directory:
@@ -54,6 +55,14 @@ class PendingFileHandler(FileSystemEventHandler):
             thread_ts=entry["thread_ts"],
             text=truncate(response),
         )
+        # React with checkmark on the last user message in thread
+        if self.reader:
+            try:
+                last_ts = entry.get("last_thread_ts_seen", entry["thread_ts"])
+                self.reader.reactions_add(channel=entry["channel_id"], timestamp=last_ts, name="white_check_mark")
+            except Exception:
+                pass
+
         path.unlink(missing_ok=True)
         logger.info(f"Posted response for {session_name}")
 
@@ -128,8 +137,8 @@ class PendingFileHandler(FileSystemEventHandler):
         logger.info(f"Connected session {tmux_session}")
 
 
-def start_watcher(config: Config, sessions: SessionManager, slack_client) -> Observer:
-    handler = PendingFileHandler(config, sessions, slack_client)
+def start_watcher(config: Config, sessions: SessionManager, slack_client, reader_client=None) -> Observer:
+    handler = PendingFileHandler(config, sessions, slack_client, reader_client)
     observer = Observer()
     observer.schedule(handler, str(config.state_dir), recursive=False)
     observer.start()

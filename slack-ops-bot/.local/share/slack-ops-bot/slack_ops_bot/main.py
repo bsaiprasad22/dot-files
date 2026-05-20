@@ -65,7 +65,7 @@ def main() -> None:
     jira_client = JiraClient(config)
 
     # Start file watcher
-    observer = start_watcher(config, sessions, poster)
+    observer = start_watcher(config, sessions, poster, reader)
 
     # Start prompt scanner
     scanner = PromptScanner(config, sessions, poster, router, config.prompt_scan_interval)
@@ -199,6 +199,12 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
         cmd = parse(clean_text)
         logger.info(f"New message: ts={ts} cmd={cmd.type} text={clean_text[:50]}")
 
+        # React to acknowledge message received
+        try:
+            reader.reactions_add(channel=config.channel_id, timestamp=ts, name="eyes")
+        except Exception:
+            pass
+
         try:
             if cmd.type == "list":
                 _handle_list(poster, config.channel_id, ts, workers, sessions)
@@ -252,6 +258,12 @@ def _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, 
                 continue
 
             text = reply.get("text", "")
+
+            # React to acknowledge thread reply
+            try:
+                reader.reactions_add(channel=entry["channel_id"], timestamp=reply_ts, name="eyes")
+            except Exception:
+                pass
 
             # Check for close/kill
             thread_cmd = parse_thread_command(text)
