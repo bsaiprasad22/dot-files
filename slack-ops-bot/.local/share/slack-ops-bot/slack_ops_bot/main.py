@@ -36,9 +36,9 @@ def main() -> None:
             logger.error(e)
         sys.exit(1)
 
-    # Two clients: user for reading, bot for posting
-    reader = WebClient(token=config.slack_user_token)
-    poster = WebClient(token=config.slack_bot_token)
+    # Two clients: user for reading, bot for posting (10s timeout to prevent hangs)
+    reader = WebClient(token=config.slack_user_token, timeout=10)
+    poster = WebClient(token=config.slack_bot_token, timeout=10)
 
     logger.info(f"Channel: {config.channel_id}, Poll: {config.poll_interval}s")
 
@@ -117,7 +117,7 @@ def main() -> None:
             elif "token_expired" in err or "invalid_auth" in err:
                 logger.warning("User token expired, refreshing...")
                 if config.refresh_user_token():
-                    reader = WebClient(token=config.slack_user_token)
+                    reader = WebClient(token=config.slack_user_token, timeout=10)
                     logger.info("User token refreshed from credentials file")
                 else:
                     logger.error("Token refresh failed — run a Claude session to re-auth Slack MCP")
