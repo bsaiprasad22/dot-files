@@ -6,7 +6,7 @@ import threading
 from .config import Config
 from .routing import MessageRouter, TUI_PATTERNS
 from .sessions import SessionManager
-from .utils import logger, run, truncate
+from .utils import clean_for_slack, logger, run, truncate
 
 
 class PromptScanner:
@@ -104,18 +104,7 @@ class PromptScanner:
         return "\n".join(output[-lines:])
 
     def _forward_idle_output(self, key: str, entry: dict, pane_text: str) -> None:
-        # Extract the last Claude response — text between the last two ❯ prompts
-        lines = pane_text.strip().split("\n")
-        # Find lines that are Claude's output (not status bars, not prompts)
-        output_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith("❯") or stripped.startswith("dir:") or "-- INSERT --" in stripped:
-                continue
-            if stripped.startswith("────"):
-                continue
-            output_lines.append(line)
-        output = "\n".join(output_lines).strip()
+        output = clean_for_slack(pane_text)
         if not output:
             return
         msg = f"*{key}*:\n{truncate(output, 3000)}"
@@ -134,7 +123,8 @@ class PromptScanner:
         logger.info(f"Forwarded idle output for {key}")
 
     def _forward_prompt(self, key: str, entry: dict, pane_text: str) -> None:
-        msg = f"*{key}* is waiting for input:\n```\n{truncate(pane_text, 2500)}\n```\nReply `1` = Yes, `2` = No (or `3` if shown)"
+        cleaned = clean_for_slack(pane_text)
+        msg = f"*{key}* is waiting for input:\n```\n{truncate(cleaned, 2500)}\n```\nReply `1` = Yes, `2` = No (or `3` if shown)"
         self.client.chat_postMessage(
             channel=entry["channel_id"],
             thread_ts=entry["thread_ts"],
