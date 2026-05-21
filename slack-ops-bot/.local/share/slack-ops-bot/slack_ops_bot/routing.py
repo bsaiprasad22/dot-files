@@ -31,8 +31,9 @@ class MessageRouter:
         pane = self.capture_pane(tmux)
         state = self.detect_state(pane)
 
-        # Reset flag so next response gets forwarded
+        # Reset prompt flag and mark that we're waiting for a response
         self.sessions.update_field(key, "prompt_forwarded", False)
+        self.sessions.update_field(key, "waiting_response", True)
 
         if state == "tui_prompt":
             self.send_tui_response(tmux, text)

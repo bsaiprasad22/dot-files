@@ -68,7 +68,7 @@ def main() -> None:
     observer = start_watcher(config, sessions, poster, reader)
 
     # Start prompt scanner
-    scanner = PromptScanner(config, sessions, poster, router, config.prompt_scan_interval)
+    scanner = PromptScanner(config, sessions, poster, router, config.prompt_scan_interval, reader)
     scanner.start()
 
     # Cleanup on startup

@@ -17,10 +17,12 @@ class PromptScanner:
         slack_client,
         router: MessageRouter,
         interval: float = 5.0,
+        reader_client=None,
     ):
         self.config = config
         self.sessions = sessions
         self.client = slack_client
+        self.reader = reader_client
         self.router = router
         self.interval = interval
         self._stop = threading.Event()
@@ -59,15 +61,21 @@ class PromptScanner:
             if not pane:
                 continue
 
-            # Only forward TUI permission prompts (need user action)
-            # Regular responses are handled by the Stop hook
+            state = self.router.detect_state(pane)
+
+            # Forward TUI permission prompts (need user action)
             if any(p.search(pane) for p in TUI_PATTERNS):
                 self._forward_prompt(key, entry, pane)
                 self.sessions.update_field(key, "prompt_forwarded", True)
 
+            # Forward idle output when we're waiting for a response to a Slack-routed message
+            elif entry.get("waiting_response") and state == "input_prompt":
+                self._forward_idle_output(key, entry, pane)
+                self.sessions.update_field(key, "waiting_response", False)
+                self.sessions.update_field(key, "prompt_forwarded", True)
+
             # Clear nudge flag if prompt was resolved
             if entry.get("needs_slack_nudge"):
-                state = self.router.detect_state(self._capture(tmux, 15))
                 if state != "tui_prompt":
                     self.sessions.update_field(key, "needs_slack_nudge", False)
 
@@ -116,6 +124,13 @@ class PromptScanner:
             thread_ts=entry["thread_ts"],
             text=msg,
         )
+        # React with checkmark on the user's message
+        if self.reader:
+            try:
+                last_ts = entry.get("last_thread_ts_seen", entry["thread_ts"])
+                self.reader.reactions_add(channel=entry["channel_id"], timestamp=last_ts, name="white_check_mark")
+            except Exception:
+                pass
         logger.info(f"Forwarded idle output for {key}")
 
     def _forward_prompt(self, key: str, entry: dict, pane_text: str) -> None:
