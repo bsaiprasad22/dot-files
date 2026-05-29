@@ -288,6 +288,6 @@ Proceed with amend? [y/n]
 Respects these conventions from CLAUDE.md:
 - Jira ID prefix in commit messages
 - Branch name = Jira ID
-- **No watermarks** - Do not add "Generated with Claude Code" or similar
-- **No co-author** - Do not add "Co-Authored-By: Claude" attribution
-- **Clean commits** - Keep messages focused on actual changes only
+- **No watermarks** - Do not add "Generated with Claude Code" or similar in the commit body
+- **Always add Claude as co-author** - Append `Co-Authored-By: Claude <noreply@anthropic.com>` trailer at the end of every commit Claude makes, separated from the body by a blank line
+- **Clean commits** - Keep the body focused on actual changes; the `Co-Authored-By` trailer is the only AI-related metadata allowed

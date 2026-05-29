@@ -62,7 +62,7 @@ Activated when the user says "hobby project". Overrides work-specific defaults:
 - **No Jira** — skip ticket ID, status updates, session summaries, Jira ID in commits
 - **No worktrees** — work directly in the repo
 - **Remote** — push to `git@github.com:bsaiprasad22/<repo-name>.git` (origin, not a separate private remote)
-- **Commits** — plain descriptive messages (no Jira prefix, still no watermarks/co-author)
+- **Commits** — plain descriptive messages (no Jira prefix, no watermarks, but still add the `Co-Authored-By: Claude` trailer per the Git Commits rules)
 - **Plans** — still saved to `~/.claude/plans/` for cross-session access, named `<project-name>.md` (ask user for a short name if unclear)
 
 Everything else (TDD, dot-files/stow, design principles, plan structure, architect workflow) still applies.
@@ -85,9 +85,19 @@ Everything else (TDD, dot-files/stow, design principles, plan structure, archite
 
 ## Git Commits
 
-- **No watermarks**: Do not add "Generated with Claude Code" or similar watermarks to commit messages
-- **No co-author**: Do not add "Co-Authored-By: Claude" or similar attribution lines
-- **Clean commits**: Keep commit messages focused on the actual changes without any AI-related metadata
+- **No watermarks**: Do not add "Generated with Claude Code" or similar watermarks in the commit body
+- **Always add Claude as co-author**: When Claude creates a commit, ALWAYS append a `Co-Authored-By: Claude <noreply@anthropic.com>` trailer at the end of the commit message, separated from the body by a blank line. This applies to every commit Claude makes, including hobby projects.
+- **Clean commits**: Keep the commit body focused on the actual changes — the `Co-Authored-By` trailer is the only AI-related metadata allowed
+
+Example:
+
+```
+INFRA-1234: Fix login validation bug
+
+Reject empty username before hitting the auth service.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
 
 ## Plan Generation Guidelines
 
