@@ -1,90 +1,63 @@
 #!/usr/bin/env bash
 # Stop hook: write Claude's response to a file for the bot to post to Slack.
-# Only fires for sessions connected to Slack (checked against registry).
+# Only fires for sessions registered as active in the slack-ops registry.
 
 set -euo pipefail
 
 SLACK_OPS_DIR="$HOME/.local/share/slack-ops"
 REGISTRY="$SLACK_OPS_DIR/registry.json"
 
-input=$(cat)
-
-# Get tmux session name — try multiple methods
-tmux_session=""
-
-# Method 1: $TMUX env var is set
-if [[ -n "${TMUX:-}" ]]; then
-    tmux_session=$(tmux display-message -p '#S' 2>/dev/null || echo "")
-fi
-
-# Method 2: walk up the process tree to find the tmux pane
-if [[ -z "$tmux_session" ]]; then
-    pid=$$
-    for _ in $(seq 1 10); do
-        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-        [[ -z "$ppid" || "$ppid" == "1" ]] && break
-        # Check if this process is a tmux client/server
-        pane_tty=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
-        if [[ -n "$pane_tty" && "$pane_tty" != "?" ]]; then
-            tmux_session=$(tmux list-panes -a -F '#{pane_tty} #{session_name}' 2>/dev/null | grep "$pane_tty" | awk '{print $2}' | head -1)
-            [[ -n "$tmux_session" ]] && break
-        fi
-        pid=$ppid
-    done
-fi
-
-# Method 3: derive from cwd — match worktree path to registry
-if [[ -z "$tmux_session" ]]; then
-    cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
-    if [[ -n "$cwd" && -f "$REGISTRY" ]]; then
-        tmux_session=$(python3 -c "
-import json, os, sys
-cwd = '$cwd'
-try:
-    reg = json.load(open('$REGISTRY'))
-    for k, v in reg.items():
-        if v.get('status') != 'active':
-            continue
-        # Match by worktree path
-        jira = v.get('jira_id', '')
-        if jira and cwd.endswith(jira):
-            print(v.get('tmux_session', k))
-            sys.exit(0)
-        # Match by tmux session name in cwd
-        ts = v.get('tmux_session', k)
-        if ts in cwd:
-            print(ts)
-            sys.exit(0)
-except:
-    pass
-" 2>/dev/null)
-    fi
-fi
-
-[[ -z "$tmux_session" ]] && exit 0
-[[ "$tmux_session" == "claude-ops" ]] && exit 0
-
-# Check if this session is in the registry and active
 [[ ! -f "$REGISTRY" ]] && exit 0
-status=$(python3 -c "
-import json, sys
+
+input=$(cat)
+cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)
+response=$(jq -r '.last_assistant_message // empty' <<<"$input" 2>/dev/null || true)
+
+# Resolve tmux_session: prefer registry match by cwd, fall back to $TMUX.
+# Single registry read; safe env-var passing (no shell interpolation).
+resolved=$(CWD="$cwd" TMUX_ENV="${TMUX:-}" python3 <<'PY'
+import json, os, sys, subprocess
+
+cwd = os.environ.get("CWD", "")
+registry_path = os.path.expanduser("~/.local/share/slack-ops/registry.json")
+
 try:
-    reg = json.load(open('$REGISTRY'))
-    for v in reg.values():
-        if v.get('tmux_session') == '$tmux_session' and v.get('status') == 'active':
-            print('connected')
-            sys.exit(0)
-    print('not_connected')
-except:
-    print('error')
-" 2>/dev/null)
+    reg = json.load(open(registry_path))
+except Exception:
+    sys.exit(0)
 
-[[ "$status" != "connected" ]] && exit 0
+def emit(session):
+    print(session)
+    sys.exit(0)
 
-# Extract response
-response=$(echo "$input" | jq -r '.last_assistant_message // empty')
+# 1. Match active session by cwd (worktree path or session name in cwd)
+for k, v in reg.items():
+    if v.get("status") != "active":
+        continue
+    ts = v.get("tmux_session", k)
+    jira = v.get("jira_id") or ""
+    if (jira and cwd.endswith(jira)) or (ts and ts in cwd):
+        emit(ts)
+
+# 2. Fall back to $TMUX → live tmux session name
+if os.environ.get("TMUX_ENV"):
+    try:
+        ts = subprocess.check_output(
+            ["tmux", "display-message", "-p", "#S"],
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        ts = ""
+    if ts:
+        for v in reg.values():
+            if v.get("tmux_session") == ts and v.get("status") == "active":
+                emit(ts)
+PY
+)
+
+[[ -z "$resolved" ]] && exit 0
+[[ "$resolved" == "claude-ops" ]] && exit 0
 [[ -z "$response" ]] && exit 0
 
-# Write pending response for bot to post
 mkdir -p "$SLACK_OPS_DIR"
-cat > "$SLACK_OPS_DIR/pending-response-${tmux_session}.txt" <<< "$response"
+printf '%s\n' "$response" > "$SLACK_OPS_DIR/pending-response-${resolved}.txt"
