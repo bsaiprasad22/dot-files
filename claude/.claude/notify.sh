@@ -27,3 +27,4 @@ printf '\ePtmux;\e\033]9;%s: %s\a\e\\' "$label" "$msg" > "$tty" 2>/dev/null
 
 # Also display a tmux message (visible when attached)
 tmux display-message "Claude Code: $msg" 2>/dev/null
+

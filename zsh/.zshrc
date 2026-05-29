@@ -162,3 +162,4 @@ claude-session() {
 alias cs="claude-session"
 
 export DOCKER_API_VERSION=1.49
+export CLAUDE_CODE_NO_FLICKER=1
