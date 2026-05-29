@@ -190,26 +190,29 @@ EOF
 log "Starting PR merge monitor scan"
 
 # Search for recently merged PRs authored by current user
-# gh search returns PRs merged across all repos
-merged_prs=$(gh search prs --author=@me --state=merged --merged=">$(date -d '15 minutes ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --json number,title,url,headRefName,mergedAt,repository,mergedBy \
-    --jq '.[]' 2>/dev/null) || true
+# gh search prs only supports limited fields, so we search first then fetch details
+search_results=$(gh search prs --author=@me --merged --merged-at=">$(date -d '15 minutes ago' -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --json number,repository \
+    --jq '.[] | "\(.repository.nameWithOwner) \(.number)"' 2>/dev/null) || true
 
-if [[ -z "$merged_prs" ]]; then
+if [[ -z "$search_results" ]]; then
     log "No recently merged PRs found"
     exit 0
 fi
 
-# Process each merged PR
-echo "$merged_prs" | while IFS= read -r pr_json; do
-    [[ -z "$pr_json" ]] && continue
+# Process each merged PR — fetch full details via gh pr view
+# Use here-string + redirect to avoid subshell (pipe | while runs in subshell,
+# which silently drops mark_processed writes if set -e kills the subshell early)
+while IFS=' ' read -r repo_full pr_number; do
+    [[ -z "$repo_full" || -z "$pr_number" ]] && continue
+
+    pr_json=$(gh pr view "$pr_number" --repo "$repo_full" \
+        --json number,title,url,headRefName,mergedAt,mergedBy 2>/dev/null) || continue
 
     pr_url=$(echo "$pr_json" | jq -r '.url')
-    pr_number=$(echo "$pr_json" | jq -r '.number')
     pr_title=$(echo "$pr_json" | jq -r '.title')
     branch=$(echo "$pr_json" | jq -r '.headRefName')
     merged_at=$(echo "$pr_json" | jq -r '.mergedAt')
-    repo_full=$(echo "$pr_json" | jq -r '.repository.nameWithOwner')
     merged_by=$(echo "$pr_json" | jq -r '.mergedBy.login')
 
     # Unique ID for dedup
@@ -234,7 +237,18 @@ echo "$merged_prs" | while IFS= read -r pr_json; do
     # Always add merge comment regardless of transition result
     add_comment "$jira_id" "$pr_url" "$pr_title" "$merged_by" "$merged_at" "$repo_full"
 
+    # Clean up worktree if it exists
+    worktree_path="/home/vm/worktrees/${jira_id}"
+    if [[ -d "$worktree_path" ]]; then
+        repo_root=$(git -C "$worktree_path" worktree list --porcelain 2>/dev/null | head -1 | awk '{print $2}') || true
+        if [[ -n "$repo_root" ]]; then
+            git -C "$repo_root" worktree remove "$worktree_path" 2>/dev/null && \
+                log "Removed worktree ${worktree_path}" || \
+                log "Failed to remove worktree ${worktree_path} (may have uncommitted changes)"
+        fi
+    fi
+
     mark_processed "$pr_id"
-done
+done <<< "$search_results"
 
 log "Scan complete"
