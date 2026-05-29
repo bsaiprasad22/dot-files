@@ -1,0 +1,39 @@
+{
+  "mcpServers": {
+    "cloud_atlassian": {
+      "type": "http",
+      "url": "https://mcp-platform.amd.com/mcp/cloud_atlassian",
+      "headers": {
+        "Authorization": "${ATLASSIAN_CLOUD_AUTH}"
+      }
+    },
+    "pensando_jira": {
+      "type": "http",
+      "url": "http://penops-staging.test.pensando.io:9443/mcp/pensando_jira",
+      "headers": {
+        "Authorization": "${PENSANDO_JIRA_AUTH}"
+      }
+    },
+    "jenkins": {
+      "type": "http",
+      "url": "http://penops-staging.test.pensando.io:9444/mcp/jenkins_mcp",
+      "headers": {
+        "Authorization": "${JENKINS_BASIC_AUTH}"
+      }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless"],
+      "env": {}
+    },
+    "figma": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "github_new": {
+      "type": "http",
+      "url": "https://mcp-platform.amd.com/mcp/github_new"
+    }
+  }
+}

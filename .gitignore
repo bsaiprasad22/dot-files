@@ -1,8 +1,5 @@
 ascii_art/.config/ascii_embroidery/project/
 ascii_art/.config/ascii_embroidery/target/
 
-# Claude MCP config — contains plaintext API tokens, never commit
-claude/.mcp.json
-
 # Stray local Claude state if Claude Code ever runs from dot-files root
 /.claude/

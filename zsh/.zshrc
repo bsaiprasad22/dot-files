@@ -163,3 +163,6 @@ alias cs="claude-session"
 
 export DOCKER_API_VERSION=1.49
 export CLAUDE_CODE_NO_FLICKER=1
+
+# MCP server auth headers — gitignored, lives outside dot-files
+[[ -f ~/.config/claude/mcp-secrets.env ]] && source ~/.config/claude/mcp-secrets.env
