@@ -133,7 +133,6 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "claude-opus-4-7[1m]",
   "hooks": {
     "Notification": [
       {
@@ -235,5 +234,6 @@
   },
   "effortLevel": "xhigh",
   "skipDangerousModePermissionPrompt": true,
-  "skipAutoPermissionPrompt": true
+  "skipAutoPermissionPrompt": true,
+  "editorMode": "vim"
 }
