@@ -98,10 +98,16 @@ def main() -> None:
     max_interval = 60.0
 
     while running:
-        # Re-read token from credentials file every poll (just a file read)
-        if config.refresh_user_token():
-            reader = WebClient(token=config.slack_user_token)
-            logger.info("Token refreshed from credentials file")
+        # Proactively refresh before the token expires (avoids the error loop).
+        if config.token_expiring_soon(within_seconds=300):
+            if config.refresh_oauth_token():
+                reader = WebClient(token=config.slack_user_token, timeout=10)
+                logger.info("Access token proactively refreshed via OAuth")
+            elif config.refresh_user_token():
+                reader = WebClient(token=config.slack_user_token, timeout=10)
+                logger.info("Token refreshed from credentials file")
+            else:
+                logger.warning("Proactive refresh failed — will retry")
 
         try:
             _poll_cycle(config, reader, poster, sessions, workers, router, jira_client, bot_id, last_channel_ts)
@@ -115,8 +121,11 @@ def main() -> None:
                 current_interval = min(current_interval * 2, max_interval)
                 logger.warning(f"Rate limited — backing off to {current_interval}s")
             elif "token_expired" in err or "invalid_auth" in err:
-                logger.warning("User token expired, refreshing...")
-                if config.refresh_user_token():
+                logger.warning("User token expired, refreshing via OAuth...")
+                if config.refresh_oauth_token():
+                    reader = WebClient(token=config.slack_user_token, timeout=10)
+                    logger.info("User token refreshed via OAuth")
+                elif config.refresh_user_token():
                     reader = WebClient(token=config.slack_user_token, timeout=10)
                     logger.info("User token refreshed from credentials file")
                 else:
