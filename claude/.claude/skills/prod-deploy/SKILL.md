@@ -15,9 +15,10 @@ Deploy, monitor, and manage the cherry-picker backend production instance. **Hig
 - **Code path**: `/var/opt/penops-core` (NOT `/ws/vm/penops-core` or `/home/vm/...` — those are dev/dead)
 - **Service path**: `services/github_ps_system/subscribers/cherry_picker`
 - **Deployment scripts**: `deployment/production/`
-- **Containers**: `cp-production-ocp` (port 9091), `cp-production-acp` (port 9090), `cp-production-celery`, `cp-production-redis`
+- **Containers**: `cp-production-ocp` (port 9091) + `cp-production-acp` (port 9090) — these are the ONLY two cherry-picker prod containers. The compose file defines just `ocp-production` and `acp-production` services (no celery/redis for cherry-picker; any `*-celery`/`*-redis` containers on the host belong to other services like jobd-ci-bridge / irm).
 - **Compose file**: `deployment/production/docker-compose.production.yaml`
 - **Production URL**: `penops.test.pensando.io`
+- **Git remote**: `origin` = `git@github.com:pensando/penops-core.git` (**SSH**, since 2026-06-22). Auth = read-only deploy key in `/root/.ssh/id_ed25519` (comment `pubsub_vm-penops-core-deploy`). The deploy key must be registered on the repo for `git fetch` to work.
 
 ### Jenkins Workspace (bd VM)
 - **Host**: `blackduck@bd` (SSH alias proxied via dev7)
@@ -28,11 +29,12 @@ Deploy, monitor, and manage the cherry-picker backend production instance. **Hig
 
 ## Pre-Deploy Checklist (READ FIRST)
 
-1. **Diff prod against your branch first** — production may be behind by months and have uncommitted in-flight modifications
+1. **Check prod's git state** — as of 2026-06-22 prod is a **clean git-tracked checkout** (HEAD on `main`, no overlay). Confirm it's still clean before deploying:
    ```bash
-   ssh pubsub_vm "cd /var/opt/penops-core && sudo git log --oneline -1 && sudo git status --short | head -20"
+   ssh pubsub_vm "cd /var/opt/penops-core && sudo git log --oneline -1 && sudo git status -sb | head -20"
    ```
-2. **Never `git checkout` blindly** — uncommitted changes on prod (config files, secrets, env, manually-added files like `app_auth.py`) would be destroyed
+   If `git status` shows uncommitted changes, someone hand-edited prod — investigate before deploying (don't clobber in-flight work).
+2. **Prefer git fast-forward over scp** — now that prod tracks `main`, deploy with `git fetch && git merge --ff-only` (see **deploy** below). Surgical scp is now a *fallback*, not the default. **Never `git reset --hard` / `git checkout` blindly** if prod ever has uncommitted changes again.
 3. **Disk space check** — production VM tends to fill up; builds fail at 100%
    ```bash
    ssh pubsub_vm "df -h /var | head -2 && sudo docker system df"
@@ -43,7 +45,37 @@ Deploy, monitor, and manage the cherry-picker backend production instance. **Hig
 
 ### deploy (Flask side)
 
-Surgical file-by-file SCP rather than `git pull` to avoid destroying in-flight work:
+Prod tracks `main` (clean git checkout since 2026-06-22). **Method A (git fast-forward) is the default.** Use Method B (bundle) only if prod's git auth is broken; Method C (scp) only for hotfixing files not yet merged to `main`.
+
+Once code files are updated by ANY method, **build + up is required** (code is baked into the image — restart alone won't pick up changes). Always restart via `run_production.sh` (see step "restart via script" below).
+
+#### Method A — git fast-forward (default)
+Requires the deploy key registered on the repo (so `git fetch` over SSH works).
+```bash
+# 1. merge your change to origin/main first (this is the source of truth)
+# 2. fast-forward prod
+ssh pubsub_vm "cd /var/opt/penops-core && \
+  sudo git fetch origin && \
+  sudo git merge --ff-only origin/main && \
+  sudo git log --oneline -1 && sudo git status -sb | head -3"
+```
+If the change touched cherry-picker code, rebuild (see "restart via script"). If it only touched files baked at build time but identical to what's running, no rebuild needed.
+
+#### Method B — git bundle (auth-free fallback)
+Use when prod can't reach GitHub (e.g., deploy key not yet registered). Transfers commits from an authed local clone via a file — no prod→GitHub auth needed.
+```bash
+# on an authed clone (e.g. /home/vm/penops-core):
+cd /home/vm/penops-core && git fetch origin
+git bundle create /tmp/penops-ff.bundle origin/main --not "$(ssh pubsub_vm 'cd /var/opt/penops-core && sudo git rev-parse HEAD')"
+scp /tmp/penops-ff.bundle pubsub_vm:/tmp/
+# on prod (working tree must be clean; stash first if not):
+ssh pubsub_vm "cd /var/opt/penops-core && \
+  sudo git fetch /tmp/penops-ff.bundle 'refs/remotes/origin/main:refs/remotes/origin/main' && \
+  sudo git merge --ff-only origin/main && sudo git log --oneline -1"
+```
+
+#### Method C — surgical scp (hotfix only, last resort)
+Only for code NOT yet on `main` (urgent hotfix). This makes `git status` dirty — reconcile back to a clean fast-forward once the change is merged.
 
 1. **Verify only expected files differ** between your branch and production base
    ```bash
@@ -62,11 +94,11 @@ Surgical file-by-file SCP rather than `git pull` to avoid destroying in-flight w
    ssh pubsub_vm "sudo cp /tmp/<JIRA-ID>-deploy/<file> /var/opt/penops-core/.../<dest>/"
    ```
 
-4. **Restart via run_production.sh — NEVER bare `docker compose up`**:
-   ```bash
-   ssh pubsub_vm "sudo bash /var/opt/penops-core/services/github_ps_system/subscribers/cherry_picker/deployment/production/run_production.sh"
-   ```
-   The script `source`s the env file before running compose. `docker compose up -d` directly leaves all `${VAR}` substitutions empty and breaks GitHub App auth.
+#### restart via script — NEVER bare `docker compose up`
+```bash
+ssh pubsub_vm "sudo bash /var/opt/penops-core/services/github_ps_system/subscribers/cherry_picker/deployment/production/run_production.sh"
+```
+The script `source`s the env file before running compose. `docker compose up -d` directly leaves all `${VAR}` substitutions empty and breaks GitHub App auth.
 
 5. **Verify env vars in container**:
    ```bash
@@ -145,7 +177,15 @@ curl -s -o /dev/null -w 'ACP: %{http_code}\n' --max-time 5 http://localhost:9090
 
 ### rollback
 
-**Flask** — restore previous code from git history or your backup:
+**Flask (git-tracked)** — roll back to the previous commit, then rebuild:
+```bash
+ssh pubsub_vm "cd /var/opt/penops-core && sudo git log --oneline -3"   # find prior good commit
+ssh pubsub_vm "cd /var/opt/penops-core && sudo git checkout <prev-good-sha> -- <path>"  # single file
+# or full: sudo git reset --hard <prev-good-sha>  (ONLY if working tree clean — confirm first)
+ssh pubsub_vm "sudo bash /var/opt/penops-core/.../deployment/production/run_production.sh"
+```
+
+**Flask (scp / overlay rollback)** — restore from a backup dir:
 ```bash
 # If you saved backups in /tmp/<JIRA-ID>-deploy-backup/, copy them back
 ssh pubsub_vm "sudo cp /tmp/<JIRA-ID>-deploy-backup/* /var/opt/penops-core/.../<dest>/"
@@ -185,10 +225,11 @@ cp -r ~/jenkins-projects/branch_creation_tool.bak.<TIMESTAMP>/. ~/jenkins-projec
 - `docker compose up -d` from outside the script gets empty strings for all `${VAR}` substitutions — service starts but auth fails
 - **Always use the script.** If debugging compose directly, source env first: `source env && sudo -E docker compose up -d`
 
-### Production code may be behind main by months
-- `/var/opt/penops-core` git history may show last commit from months ago
-- Don't `git pull` to update — there may be uncommitted in-flight work
-- Surgically scp only the files for your change
+### Git state (updated 2026-06-22)
+- Prod is now a **clean git checkout tracking `main`** (HEAD == deployed commit). Prior to this it was stuck at an old commit with an scp overlay on top.
+- **Deploy via `git fetch && git merge --ff-only origin/main`** (Method A). Only fall back to scp for un-merged hotfixes.
+- A `git fetch` failing with `Personal access tokens (classic) are forbidden` means the SSH deploy key isn't registered (or the remote regressed to an HTTPS PAT URL) — fix auth, don't scp around it.
+- If prod's `git status` is unexpectedly dirty, someone hotfixed via scp — reconcile it back to a clean fast-forward once that change lands on `main`.
 
 ### Build is required, not just restart
 - Dockerfile uses `COPY services/github_ps_system/subscribers/cherry_picker /app/...` — code is baked into the image at build time
@@ -207,13 +248,14 @@ cp -r ~/jenkins-projects/branch_creation_tool.bak.<TIMESTAMP>/. ~/jenkins-projec
 
 - `/home/vm/github_ps_system/` exists but is **dead** — old deployment path, systemd services there are inactive/disabled. Don't deploy there.
 - `pr-monitor.service` (port 9092) runs from `/home/vm/...` — separate concern, leave alone
-- `cp-production-celery` may show "unhealthy" but still functions — health probe issue similar to the Flask one
-- `/var/opt/penops-core` may have ~13 uncommitted modifications from past deploy attempts (e.g., manual port of `app_auth.py`). Leave them as-is unless coordinating with the original implementer.
+- The cherry-picker prod `/health` probe always reports "unhealthy" (false positive — see Gotchas). Both `cp-production-ocp`/`-acp` containers show `(unhealthy)` while serving fine.
+- **2026-06-22 git reconcile**: prod was migrated from "old commit + scp overlay" to a clean fast-forward at `c5bbe18`. Two leaked tokens were removed from `.git/config` in the process: a dead classic PAT (`ghp_…`, in `origin`) and a live OAuth token (`gho_…`, in a now-removed `ronak-token` remote) — **both should be revoked on GitHub**. Remote is now SSH with a read-only deploy key.
 
 ## Notes
 
 - OCP serves `/cherrypick/api/*`, `/prepare_branch/*`, `/prm/*`
 - ACP serves webhooks: `/webhook`, `/cp-record`
 - Production auth: GitHub App installation tokens (since INFRA-7107) — needs `GITHUB_APP_ID` and `GITHUB_APP_PEM_PATH` env vars + `secrets/penops-internal.pem` file
+- **Git auth (separate from app auth)**: prod's `origin` is SSH; `git fetch`/deploy needs the read-only deploy key (`/root/.ssh/id_ed25519`) registered on `pensando/penops-core`. Pensando **forbids classic PATs** (`ghp_`) for git over HTTPS — they 403. OAuth tokens (`gho_`) and SSH deploy keys work. If a deploy fetch fails on auth, fix the key/remote — fall back to the **git bundle** method (deploy → Method B), don't revert to scp.
 - Jenkins jobs copy workspace from `~/jenkins-projects/<job>/` at the start of each build → code changes apply to **next** build, not in-flight ones
 - Always test in staging first via the `staging-deploy` skill before touching production
