@@ -3,6 +3,8 @@
 # if [[ -n "$NVIM" ]]; then
 #     return
 # fi
+# Reset mouse reporting on login (handles reconnect after sleep)
+printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1015l'
 
 # Path to your Oh My Zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
@@ -166,3 +168,6 @@ export CLAUDE_CODE_NO_FLICKER=1
 
 # MCP server auth headers — gitignored, lives outside dot-files
 [[ -f ~/.config/claude/mcp-secrets.env ]] && source ~/.config/claude/mcp-secrets.env
+
+# Added by sonarqube-cli installer
+export PATH="$HOME/.local/share/sonarqube-cli/bin:$PATH"
