@@ -72,6 +72,16 @@ Everything else (TDD, dot-files/stow, design principles, plan structure, archite
 - **Jira**: Always use `pensando_jira` MCP server (`mcp__pensando_jira__*` tools)
 - **Confluence**: Always use `cloud_atlassian` MCP server (`mcp__cloud_atlassian__confluence_*` tools)
 
+## Plugin Usage (enforce when relevant)
+
+- **Frontend/UI work** — when building or modifying web components, pages, or app
+  UIs, use the `frontend-design` skill (production-grade, non-generic UI). Still use
+  figma/playwright MCP for design capture and browser verification.
+- **PR reviews & pre-PR checks** — before creating a PR, or when asked to review
+  code, use the pr-review-toolkit: run `/review-pr`, and dispatch its specialized
+  agents as fitting — code-reviewer, pr-test-analyzer, silent-failure-hunter,
+  type-design-analyzer, comment-analyzer. This is in addition to `/simplify`.
+
 ## Jira Integration
 
 - **Project key**: Always use the `INFRA` project when creating Jira tickets
@@ -102,6 +112,15 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ## Plan Generation Guidelines
 
 When generating implementation plans (in plan mode), follow these principles:
+
+### Planning Feedback Loop (lavish-axi)
+
+During the planning stage, use **lavish-axi** (https://github.com/kunchenguid/lavish-axi)
+for interactive feedback — render the plan/design as an HTML artifact, open it for
+annotation, and poll for feedback before finalizing.
+
+- **Third-party code**: lavish-axi runs via `npx`. ALWAYS ask before each `npx`
+  invocation — never auto-run it, even under bypassPermissions. Not yet pinned/vendored.
 
 ### Plan Storage and Naming
 
@@ -151,23 +170,9 @@ Every plan must include:
 
 Prioritize maintainability and modularity. For each architectural decision, explicitly state which principle(s) justify it:
 
-**SOLID Principles:**
-- **SRP** (Single Responsibility) - One reason to change per component
-- **OCP** (Open/Closed) - Extend without modifying
-- **LSP** (Liskov Substitution) - Subtypes must be substitutable
-- **ISP** (Interface Segregation) - Small, focused interfaces
-- **DIP** (Dependency Inversion) - Depend on abstractions
-
-**Simplicity Principles:**
-- **KISS** - Prefer simple over clever
-- **YAGNI** - Don't build for hypothetical futures
-- **DRY** - Single source of truth (but don't over-abstract)
-
-**Modularity Principles:**
-- **High Cohesion** - Related things together
-- **Low Coupling** - Components change independently
-- **Encapsulation** - Hide implementation details
-- **Composition > Inheritance** - Favor flexible composition
+- **SOLID**: SRP, OCP, LSP, ISP, DIP
+- **Simplicity**: KISS, YAGNI, DRY (but don't over-abstract)
+- **Modularity**: High Cohesion, Low Coupling, Encapsulation, Composition > Inheritance
 
 ### Plan Format
 
